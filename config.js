@@ -1,0 +1,8 @@
+export const CONFIG = {
+  BET_AMOUNT: 5,
+  MAX_BETS: 3,
+  MAX_COINS: 3,
+  MIN_DIFF: 0.0035,
+  TRIGGER_TIME: 30,
+  MAX_DELAY: 60 * 60 // detik
+};
