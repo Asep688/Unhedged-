@@ -4,5 +4,6 @@ export const CONFIG = {
   MAX_COINS: 3,
   MIN_DIFF: 0.0035,
   TRIGGER_TIME: 30,
-  MAX_DELAY: 60 * 60 // detik
+  MAX_DELAY: 60 * 60,
+  REFRESH_INTERVAL: 10 * 60 * 1000
 };
