@@ -1,61 +1,36 @@
-🚀 Unhedged Sniper Bot (Auto Trading)
+🚀 Unhedged Sniper Bot
 
-Bot otomatis untuk Unhedged.gg prediction market dengan strategi last-second sniper menggunakan harga real-time dari Binance + tracking performa lengkap.
+Bot otomatis untuk trading di Unhedged.gg
 
----
+Fitur:
 
-✨ Fitur Utama
-
-- ⚡ Eksekusi otomatis di 30 detik terakhir
-- 📊 Harga real-time dari Binance (tanpa API tambahan)
-- 🧠 Auto detect coin:
-  - Bitcoin / BTC / btc
-  - Ethereum / ETH / eth
-  - Solana / SOL / sol
-- 🎯 Filter market:
-  - YES / NO saja
-  - Harus ada target harga (above / below)
-  - Maksimal 1 jam sebelum close
-- 💰 Limit:
-  - jumlah bet
-  - jumlah coin
-- 📈 Tampilan harga + persen + arah (📈📉)
-- 📊 Tracking performa:
-  - total bet
-  - win / loss
-  - profit
-  - winrate
-- 💾 Stats tersimpan otomatis ("stats.json")
+- ✅ BTC / ETH / SOL (harga dari Binance)
+- ✅ CC / Canton Coin (harga dari Unhedged)
+- ✅ Auto bet berdasarkan selisih harga
+- ✅ Stats (profit, winrate, dll)
 
 ---
 
 📁 Struktur Project
 
 Unhedged-/
-├── bot.js        # main bot
-├── config.js     # pengaturan bot
-├── stats.json    # data performa
-├── .env          # API key
+├── bot.js
+├── config.js
+├── stats.json
+├── .env
 ├── package.json
 
 ---
 
-⚙️ Instalasi
-
-1. Clone repo
+⚙️ 1. Install
 
 git clone https://github.com/Asep688/Unhedged-
 cd Unhedged-
-
----
-
-2. Install dependency
-
 npm install
 
 ---
 
-3. Setup API Key
+🔐 2. Setup API KEY
 
 Buat file ".env":
 
@@ -63,17 +38,13 @@ nano .env
 
 Isi:
 
-API_KEY=ak_xxxxxxxxxxxxx
-
-⚠️ Jangan share API key ke publik
+API_KEY=ak_xxxxxxxxxxxxxx
 
 ---
 
-4. Setup stats.json
+📊 3. Setup Stats
 
-nano stats.json
-
-Isi:
+Buat file "stats.json":
 
 {
   "totalBets": 0,
@@ -84,149 +55,101 @@ Isi:
 
 ---
 
-5. Jalankan bot
+⚙️ 4. Config Bot
 
-npm start
-
-atau:
-
-node bot.js
-
----
-
-🧠 Cara Kerja Bot
-
-1. Ambil market dari Unhedged
-2. Filter market valid:
-   - crypto
-   - YES/NO
-   - above/below
-   - ≤ 1 jam
-3. Tampilkan harga coin (real-time)
-4. Tunggu hingga 30 detik sebelum close
-5. Ambil harga terbaru dari Binance
-6. Hitung selisih (diff)
-7. Jika memenuhi syarat → otomatis bet
-
----
-
-📊 Contoh Output
-
-🚀 Bot Started
-
-🔄 Refresh Market
-Balance: 50 CC
-
-📊 ===== STATS =====
-Total Bets : 10
-Wins       : 6
-Losses     : 4
-Profit     : +12 CC
-Winrate    : 60%
-
-📈 BTCUSDT → $71000 (+0.52%)
-📉 ETHUSDT → $2180 (-0.30%)
-
-⏳ Scheduled: Bitcoin above $70000
-   ⏱ 25.3 sec
-
----
-
-⚙️ Config (config.js)
-
-Kamu bisa ubah strategi di sini:
+Edit "config.js":
 
 export const CONFIG = {
-  BET_AMOUNT: 5,        // jumlah CC per bet
-  MAX_BETS: 3,          // maksimal bet per cycle
-  MAX_COINS: 3,         // maksimal coin berbeda
-  MIN_DIFF: 0.0035,     // minimal selisih (0.35%)
+  BET_AMOUNT: 5,        // jumlah taruhan per bet
+  MAX_BETS: 3,          // maksimal bet per siklus
+  MAX_COINS: 3,         // jumlah coin berbeda
+  MIN_DIFF: 0.0035,     // minimal selisih 0.35%
   TRIGGER_TIME: 30,     // detik sebelum close
-  MAX_DELAY: 60 * 60    // max waktu (1 jam)
+  MAX_DELAY: 60 * 60,   // maksimal 1 jam
+  REFRESH_INTERVAL: 10 * 60 * 1000 // refresh tiap 10 menit
 };
 
 ---
 
-📊 Stats (stats.json)
+🇮🇩 Catatan Bahasa Indonesia di Config
 
-Disimpan otomatis:
+- Komentar Bahasa Indonesia aman digunakan
+- Tidak akan menyebabkan error
+- Disarankan untuk penjelasan agar lebih mudah dipahami
 
-{
-  "totalBets": 20,
-  "wins": 15,
-  "losses": 5,
-  "profit": 30
-}
+Contoh yang benar:
 
----
-
-⚠️ Catatan Penting
-
-- Bot tidak akan bet jika:
-  - saldo 0 CC
-  - API key tidak valid
-- Coin yang tidak ada di Binance (misal CC) akan:
-  - tetap terdeteksi
-  - tapi di-skip
+MIN_DIFF: 0.0035 // selisih minimal 0.35%
 
 ---
 
-🛠 Troubleshooting
+⚠️ Hindari kesalahan ini:
 
-❌ API_KEY tidak ditemukan
+❌ Kurang koma:
 
-Pastikan ".env" ada dan benar
+BET_AMOUNT: 5
+MAX_BETS: 3
 
----
+❌ Key pakai spasi:
 
-❌ npm start error
+MAX BETS: 3
 
-Pastikan "package.json" ada:
+❌ Tipe data salah:
 
-"scripts": {
-  "start": "node bot.js"
-}
-
----
-
-❌ Coin tidak muncul
-
-Pastikan market mengandung:
-
-- BTC / Bitcoin
-- ETH / Ethereum
-- SOL / Solana
+MIN_DIFF: "0.0035"
 
 ---
 
-❌ Tidak ada bet
+▶️ 5. Jalankan Bot
 
-Kemungkinan:
+node bot.js
 
-- diff terlalu kecil
-- saldo habis
+atau:
 
----
-
-🚀 Upgrade Selanjutnya
-
-Fitur yang bisa ditambahkan:
-
-- 📈 Ranking market terbaik (auto pilih)
-- 🧠 AI prediction
-- 🔔 Notifikasi Telegram
-- 🛑 Auto stop jika loss
-- ⚡ Ultra sniper (monitor per detik)
+npm start
 
 ---
 
-⚠️ Disclaimer
+📈 Output
 
-Gunakan bot ini dengan risiko sendiri.
-Bot ini bukan jaminan profit.
+🚀 Bot Started
+
+📊 STATS
+Total Bets / Profit / Winrate
+
+📈 BTCUSDT → $xxxx (+x%)
+🟡 CC → $x.xx
+
+⏳ Scheduled: Market
 
 ---
 
-👨‍💻 Author
+⚠️ Catatan
 
-GitHub: https://github.com/Asep688
+- Jika "Balance = 0 CC" → bot tidak bisa bet
+- CC menggunakan harga dari Unhedged
+- Bot hanya ambil market mendekati waktu close
+
+---
+
+🔥 Tips
+
+- Gunakan VPS agar bot jalan 24 jam
+- Atur "MIN_DIFF":
+  - kecil → lebih sering bet
+  - besar → lebih selektif
+
+---
+
+🧩 Fitur
+
+- Auto detect coin (BTC, ETH, SOL, CC)
+- Hybrid pricing (Binance + Unhedged)
+- Limit bet & coin
+- Stats otomatis tersimpan
+
+---
+
+🚀 Selesai
+
+Bot siap digunakan 🎯
