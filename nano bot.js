@@ -1,13 +1,17 @@
 import axios from "axios";
+import 'dotenv/config';
 
-const API_KEY = "ak_RJKxDN4GUMjX3cXueMWLDkbdCRSJB0fE5ZH7FjHWumrj1Bl6";
+// 🔐 ambil API key dari .env
+const API_KEY = process.env.API_KEY;
 
+// ===== CONFIG =====
 const BET_AMOUNT = 5;
 const MIN_DIFF = 0.0035;
-const TRIGGER_TIME = 30; // detik
+const TRIGGER_TIME = 30; // detik sebelum close
 const REFRESH_INTERVAL = 10 * 60 * 1000; // 10 menit
 
 let activeTimers = new Set();
+let refreshTimeout;
 
 // ===== UI =====
 function log(title, data = "") {
@@ -153,21 +157,25 @@ async function scheduleMarkets() {
 }
 
 // ===== REFRESH CONTROL =====
-let refreshTimeout;
-
 function triggerRefresh() {
   clearTimeout(refreshTimeout);
 
   refreshTimeout = setTimeout(() => {
     scheduleMarkets();
-  }, 2000); // refresh cepat setelah event
+  }, 2000);
 }
 
-// ===== AUTO REFRESH (10 MENIT) =====
+// ===== AUTO REFRESH =====
 setInterval(() => {
   log("⏰ Auto Refresh 10 menit");
   scheduleMarkets();
 }, REFRESH_INTERVAL);
 
 // ===== START =====
+if (!API_KEY) {
+  console.log("❌ API_KEY tidak ditemukan di .env");
+  process.exit(1);
+}
+
+log("🚀 Bot Started");
 scheduleMarkets();
