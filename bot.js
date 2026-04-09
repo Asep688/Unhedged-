@@ -92,6 +92,22 @@ async function getPriceWithChange(symbol) {
   }
 }
 
+// ===== CC PRICE =====
+async function getCCPriceFromMarket(marketId) {
+  try {
+    const res = await axios.get(
+      `https://api.unhedged.gg/api/v1/ctm/rounds/${marketId}/price-history`
+    );
+
+    const prices = res.data.prices;
+    if (!prices || prices.length === 0) return null;
+
+    return prices[prices.length - 1].price;
+  } catch {
+    return null;
+  }
+}
+
 async function placeBet(marketId, outcomeIndex) {
   return axios.post(
     "https://api.unhedged.gg/api/v1/bets",
@@ -146,22 +162,21 @@ async function updateStats() {
   }
 }
 
-// ===== COIN DETECTION (SUPER FLEX) =====
-function extractCoinSymbol(q) {
+// ===== COIN DETECTION =====
+function extractCoin(q) {
   q = q.toLowerCase();
 
-  const map = [
-    { keys: ["btc", "bitcoin"], symbol: "BTCUSDT" },
-    { keys: ["eth", "ethereum"], symbol: "ETHUSDT" },
-    { keys: ["sol", "solana"], symbol: "SOLUSDT" },
-    { keys: ["cc", "canton"], symbol: null }
-  ];
+  if (q.includes("btc") || q.includes("bitcoin"))
+    return { type: "binance", symbol: "BTCUSDT" };
 
-  for (const coin of map) {
-    for (const k of coin.keys) {
-      if (q.includes(k)) return coin.symbol;
-    }
-  }
+  if (q.includes("eth") || q.includes("ethereum"))
+    return { type: "binance", symbol: "ETHUSDT" };
+
+  if (q.includes("sol") || q.includes("solana"))
+    return { type: "binance", symbol: "SOLUSDT" };
+
+  if (q.includes("cc") || q.includes("canton"))
+    return { type: "cc", symbol: "CC" };
 
   return null;
 }
@@ -178,38 +193,43 @@ async function executeTrade(market) {
   try {
     log("Checking Market", market.question);
 
-    const symbol = extractCoinSymbol(market.question);
+    const coin = extractCoin(market.question);
     const target = extractTarget(market.question);
+
+    if (!coin) {
+      log("Skip", "Coin tidak dikenali");
+      return;
+    }
 
     if (!target) {
       log("Skip", "Target tidak ditemukan");
-      triggerRefresh();
       return;
     }
 
-    if (!symbol) {
-      log("Skip", "Coin tidak support Binance");
-      triggerRefresh();
-      return;
+    let current = null;
+
+    if (coin.type === "binance") {
+      current = await getPrice(coin.symbol);
     }
 
-    const current = await getPrice(symbol);
+    if (coin.type === "cc") {
+      current = await getCCPriceFromMarket(market.id);
+    }
+
     if (!current) {
-      log("Skip", "Harga tidak ditemukan");
-      triggerRefresh();
+      log("Skip", "Harga tidak tersedia");
       return;
     }
 
     const diff = Math.abs(current - target) / target;
 
-    console.log(`${color.yellow}${symbol}${color.reset}`);
+    console.log(`${color.yellow}${coin.symbol}${color.reset}`);
     console.log(`Price : ${current}`);
     console.log(`Target: ${target}`);
     console.log(`Diff  : ${(diff * 100).toFixed(3)}%`);
 
     if (diff < CONFIG.MIN_DIFF) {
       log("Skip", "Diff kecil");
-      triggerRefresh();
       return;
     }
 
@@ -222,11 +242,8 @@ async function executeTrade(market) {
 
     console.log(`${color.green}✅ BET SUCCESS${color.reset}`);
 
-    triggerRefresh();
-
   } catch (err) {
     errorLog(err);
-    triggerRefresh();
   }
 }
 
@@ -262,26 +279,31 @@ async function scheduleMarkets() {
     const shown = new Set();
 
     for (const m of markets) {
-      const symbol = extractCoinSymbol(m.question);
+      const coin = extractCoin(m.question);
 
-      if (shown.has(m.question)) continue;
+      if (!coin || shown.has(m.question)) continue;
 
-      if (symbol) {
-        const data = await getPriceWithChange(symbol);
+      if (coin.type === "binance") {
+        const data = await getPriceWithChange(coin.symbol);
 
         if (data) {
           const arrow = data.change >= 0 ? "📈" : "📉";
           const c = data.change >= 0 ? color.green : color.red;
 
           console.log(
-            `${c}${arrow} ${symbol} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`
+            `${c}${arrow} ${coin.symbol} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`
           );
-        } else {
-          console.log(`⚠️ ${symbol} tidak tersedia di Binance`);
         }
+      }
 
-      } else if (m.question.toLowerCase().includes("canton")) {
-        console.log(`⚠️ CANTON COIN → tidak tersedia di Binance`);
+      if (coin.type === "cc") {
+        const price = await getCCPriceFromMarket(m.id);
+
+        if (price) {
+          console.log(`🟡 CC → $${price} (Unhedged)`);
+        } else {
+          console.log(`⚠️ CC → harga tidak tersedia`);
+        }
       }
 
       shown.add(m.question);
@@ -301,11 +323,11 @@ async function scheduleMarkets() {
       if (!m.outcomes || m.outcomes.length !== 2) continue;
       if (!q.includes("ABOVE") && !q.includes("BELOW")) continue;
 
-      const symbol = extractCoinSymbol(m.question);
-      if (!symbol) continue;
+      const coin = extractCoin(m.question);
+      if (!coin) continue;
 
       if (betCount >= CONFIG.MAX_BETS) continue;
-      if (usedCoins.has(symbol)) continue;
+      if (usedCoins.has(coin.symbol)) continue;
       if (usedCoins.size >= CONFIG.MAX_COINS) continue;
 
       const end = new Date(m.endTime).getTime();
@@ -315,7 +337,7 @@ async function scheduleMarkets() {
       if (delay <= 0) continue;
       if (delay > CONFIG.MAX_DELAY * 1000) continue;
 
-      usedCoins.add(symbol);
+      usedCoins.add(coin.symbol);
       betCount++;
 
       console.log(`${color.cyan}⏳ Scheduled:${color.reset} ${m.question}`);
@@ -342,9 +364,9 @@ function triggerRefresh() {
 
 // ===== AUTO REFRESH =====
 setInterval(() => {
-  log("⏰ Auto Refresh 10 menit");
+  log("⏰ Auto Refresh");
   scheduleMarkets();
-}, 10 * 60 * 1000);
+}, CONFIG.REFRESH_INTERVAL);
 
 // ===== START =====
 if (!API_KEY) {
