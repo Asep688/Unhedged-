@@ -167,16 +167,16 @@ function extractCoin(q) {
   q = q.toLowerCase();
 
   if (q.includes("btc") || q.includes("bitcoin"))
-    return { type: "binance", symbol: "BTCUSDT" };
+    return { type: "binance", symbol: "BTCUSDT", priority: 0 };
 
   if (q.includes("eth") || q.includes("ethereum"))
-    return { type: "binance", symbol: "ETHUSDT" };
+    return { type: "binance", symbol: "ETHUSDT", priority: 1 };
 
   if (q.includes("sol") || q.includes("solana"))
-    return { type: "binance", symbol: "SOLUSDT" };
+    return { type: "binance", symbol: "SOLUSDT", priority: 2 };
 
   if (q.includes("cc") || q.includes("canton"))
-    return { type: "cc", symbol: "CC" };
+    return { type: "cc", symbol: "CC", priority: 99 };
 
   return null;
 }
@@ -196,15 +196,7 @@ async function executeTrade(market) {
     const coin = extractCoin(market.question);
     const target = extractTarget(market.question);
 
-    if (!coin) {
-      log("Skip", "Coin tidak dikenali");
-      return;
-    }
-
-    if (!target) {
-      log("Skip", "Target tidak ditemukan");
-      return;
-    }
+    if (!coin || !target) return;
 
     let current = null;
 
@@ -216,10 +208,7 @@ async function executeTrade(market) {
       current = await getCCPriceFromMarket(market.id);
     }
 
-    if (!current) {
-      log("Skip", "Harga tidak tersedia");
-      return;
-    }
+    if (!current) return;
 
     const diff = Math.abs(current - target) / target;
 
@@ -228,10 +217,7 @@ async function executeTrade(market) {
     console.log(`Target: ${target}`);
     console.log(`Diff  : ${(diff * 100).toFixed(3)}%`);
 
-    if (diff < CONFIG.MIN_DIFF) {
-      log("Skip", "Diff kecil");
-      return;
-    }
+    if (diff < CONFIG.MIN_DIFF) return;
 
     const outcomeIndex = current > target ? 0 : 1;
 
@@ -259,6 +245,14 @@ async function scheduleMarkets() {
 
     console.log(`${color.yellow}Balance: ${balance} CC${color.reset}`);
 
+    // ===== SORT PRIORITY =====
+    markets.sort((a, b) => {
+      const ca = extractCoin(a.question);
+      const cb = extractCoin(b.question);
+
+      return (ca?.priority ?? 99) - (cb?.priority ?? 99);
+    });
+
     // ===== STATS =====
     const total = stats.wins + stats.losses;
 
@@ -281,7 +275,7 @@ async function scheduleMarkets() {
     for (const m of markets) {
       const coin = extractCoin(m.question);
 
-      if (!coin || shown.has(m.question)) continue;
+      if (!coin || shown.has(coin.symbol)) continue;
 
       if (coin.type === "binance") {
         const data = await getPriceWithChange(coin.symbol);
@@ -300,13 +294,13 @@ async function scheduleMarkets() {
         const price = await getCCPriceFromMarket(m.id);
 
         if (price) {
-          console.log(`🟡 CC → $${price} (Unhedged)`);
+          console.log(`🟡 CC → $${price}`);
         } else {
           console.log(`⚠️ CC → harga tidak tersedia`);
         }
       }
 
-      shown.add(m.question);
+      shown.add(coin.symbol);
     }
 
     const now = Date.now();
@@ -318,17 +312,23 @@ async function scheduleMarkets() {
     for (const m of markets) {
       if (activeTimers.has(m.id)) continue;
 
-      const q = m.question.toUpperCase();
-
-      if (!m.outcomes || m.outcomes.length !== 2) continue;
-      if (!q.includes("ABOVE") && !q.includes("BELOW")) continue;
-
       const coin = extractCoin(m.question);
       if (!coin) continue;
 
-      if (betCount >= CONFIG.MAX_BETS) continue;
-      if (usedCoins.has(coin.symbol)) continue;
-      if (usedCoins.size >= CONFIG.MAX_COINS) continue;
+      const q = m.question.toUpperCase();
+
+      const valid =
+        q.includes("ABOVE") ||
+        q.includes("BELOW") ||
+        q.includes("HIT") ||
+        q.includes("REACH") ||
+        q.includes("TARGET");
+
+      if (!valid) continue;
+
+      // 🔥 FIX: CC tidak dihitung limit
+      if (coin.type !== "cc" && usedCoins.size >= CONFIG.MAX_COINS) continue;
+      if (coin.type !== "cc" && usedCoins.has(coin.symbol)) continue;
 
       const end = new Date(m.endTime).getTime();
       const triggerTime = end - CONFIG.TRIGGER_TIME * 1000;
@@ -337,7 +337,10 @@ async function scheduleMarkets() {
       if (delay <= 0) continue;
       if (delay > CONFIG.MAX_DELAY * 1000) continue;
 
-      usedCoins.add(coin.symbol);
+      if (coin.type !== "cc") {
+        usedCoins.add(coin.symbol);
+      }
+
       betCount++;
 
       console.log(`${color.cyan}⏳ Scheduled:${color.reset} ${m.question}`);
@@ -354,12 +357,6 @@ async function scheduleMarkets() {
   } catch (err) {
     errorLog(err);
   }
-}
-
-// ===== REFRESH =====
-function triggerRefresh() {
-  clearTimeout(refreshTimeout);
-  refreshTimeout = setTimeout(scheduleMarkets, 2000);
 }
 
 // ===== AUTO REFRESH =====
