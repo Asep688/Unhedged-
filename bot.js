@@ -1,7 +1,6 @@
 import axios from "axios";
 import 'dotenv/config';
 
-// 🔐 ambil API key dari .env
 const API_KEY = process.env.API_KEY;
 
 // ===== CONFIG =====
@@ -82,6 +81,13 @@ async function executeTrade(market) {
   try {
     log("Checking Market", market.question);
 
+    // 🔥 safety tambahan
+    if (!market.question.includes("$")) {
+      log("Skip", "Tidak ada target harga");
+      triggerRefresh();
+      return;
+    }
+
     const symbol = getSymbol(market.question);
     const target = extractTarget(market.question);
 
@@ -133,12 +139,29 @@ async function scheduleMarkets() {
     for (const m of markets) {
       if (activeTimers.has(m.id)) continue;
 
+      const q = m.question.toUpperCase();
+
+      // 🔥 FILTER 1: hanya crypto
+      if (!q.includes("BTC") &&
+          !q.includes("ETH") &&
+          !q.includes("SOL")) continue;
+
+      // 🔥 FILTER 2: YES/NO market
+      if (!m.outcomes || m.outcomes.length !== 2) continue;
+
+      // 🔥 FILTER 3: harus ada target (above/below)
+      if (!q.includes("ABOVE") && !q.includes("BELOW")) continue;
+
       const end = new Date(m.endTime).getTime();
       const triggerTime = end - TRIGGER_TIME * 1000;
 
       const delay = triggerTime - now;
 
+      // ❗ skip kalau sudah lewat
       if (delay <= 0) continue;
+
+      // 🔥 FILTER 4: hanya market dekat (<= 1 jam)
+      if (delay > 60 * 60 * 1000) continue;
 
       activeTimers.add(m.id);
 
