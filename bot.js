@@ -26,7 +26,7 @@ let stats = {
   profit: 0
 };
 
-// ===== LOAD / SAVE STATS =====
+// ===== LOAD / SAVE =====
 function loadStats() {
   try {
     const data = fs.readFileSync("stats.json");
@@ -109,7 +109,7 @@ async function placeBet(marketId, outcomeIndex) {
   );
 }
 
-// ===== UPDATE STATS FROM API =====
+// ===== UPDATE STATS =====
 async function updateStats() {
   try {
     const res = await axios.get(
@@ -146,15 +146,23 @@ async function updateStats() {
   }
 }
 
-// ===== AUTO DETECT COIN =====
+// ===== COIN DETECTION (SUPER FLEX) =====
 function extractCoinSymbol(q) {
-  const words = q.toUpperCase().split(" ");
+  q = q.toLowerCase();
 
-  for (const w of words) {
-    if (/^[A-Z]{2,10}$/.test(w)) {
-      return w + "USDT";
+  const map = [
+    { keys: ["btc", "bitcoin"], symbol: "BTCUSDT" },
+    { keys: ["eth", "ethereum"], symbol: "ETHUSDT" },
+    { keys: ["sol", "solana"], symbol: "SOLUSDT" },
+    { keys: ["cc", "canton"], symbol: null }
+  ];
+
+  for (const coin of map) {
+    for (const k of coin.keys) {
+      if (q.includes(k)) return coin.symbol;
     }
   }
+
   return null;
 }
 
@@ -173,15 +181,21 @@ async function executeTrade(market) {
     const symbol = extractCoinSymbol(market.question);
     const target = extractTarget(market.question);
 
-    if (!symbol || !target) {
-      log("Skip", "Parse gagal");
+    if (!target) {
+      log("Skip", "Target tidak ditemukan");
+      triggerRefresh();
+      return;
+    }
+
+    if (!symbol) {
+      log("Skip", "Coin tidak support Binance");
       triggerRefresh();
       return;
     }
 
     const current = await getPrice(symbol);
     if (!current) {
-      log("Skip", `Coin tidak ada (${symbol})`);
+      log("Skip", "Harga tidak ditemukan");
       triggerRefresh();
       return;
     }
@@ -189,9 +203,9 @@ async function executeTrade(market) {
     const diff = Math.abs(current - target) / target;
 
     console.log(`${color.yellow}${symbol}${color.reset}`);
-    console.log(`Price: ${current}`);
+    console.log(`Price : ${current}`);
     console.log(`Target: ${target}`);
-    console.log(`Diff: ${(diff * 100).toFixed(3)}%`);
+    console.log(`Diff  : ${(diff * 100).toFixed(3)}%`);
 
     if (diff < CONFIG.MIN_DIFF) {
       log("Skip", "Diff kecil");
@@ -216,7 +230,7 @@ async function executeTrade(market) {
   }
 }
 
-// ===== SCHEDULER =====
+// ===== MAIN =====
 async function scheduleMarkets() {
   try {
     log("🔄 Refresh Market");
@@ -228,9 +242,11 @@ async function scheduleMarkets() {
 
     console.log(`${color.yellow}Balance: ${balance} CC${color.reset}`);
 
-    // ===== STATS DISPLAY =====
-    const winrate = stats.totalBets > 0
-      ? ((stats.wins / stats.totalBets) * 100).toFixed(2)
+    // ===== STATS =====
+    const total = stats.wins + stats.losses;
+
+    const winrate = total > 0
+      ? ((stats.wins / total) * 100).toFixed(2)
       : 0;
 
     const profitColor = stats.profit >= 0 ? color.green : color.red;
@@ -242,29 +258,39 @@ async function scheduleMarkets() {
     console.log(`${profitColor}Profit     : ${stats.profit} CC${color.reset}`);
     console.log(`Winrate    : ${winrate}%`);
 
+    // ===== PRICE DISPLAY =====
+    const shown = new Set();
+
+    for (const m of markets) {
+      const symbol = extractCoinSymbol(m.question);
+
+      if (shown.has(m.question)) continue;
+
+      if (symbol) {
+        const data = await getPriceWithChange(symbol);
+
+        if (data) {
+          const arrow = data.change >= 0 ? "📈" : "📉";
+          const c = data.change >= 0 ? color.green : color.red;
+
+          console.log(
+            `${c}${arrow} ${symbol} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`
+          );
+        } else {
+          console.log(`⚠️ ${symbol} tidak tersedia di Binance`);
+        }
+
+      } else if (m.question.toLowerCase().includes("canton")) {
+        console.log(`⚠️ CANTON COIN → tidak tersedia di Binance`);
+      }
+
+      shown.add(m.question);
+    }
+
     const now = Date.now();
 
     let betCount = 0;
     const usedCoins = new Set();
-    const shown = new Set();
-
-    // ===== PRICE DISPLAY =====
-    for (const m of markets) {
-      const symbol = extractCoinSymbol(m.question);
-      if (!symbol || shown.has(symbol)) continue;
-
-      const data = await getPriceWithChange(symbol);
-      if (data) {
-        const arrow = data.change >= 0 ? "📈" : "📉";
-        const c = data.change >= 0 ? color.green : color.red;
-
-        console.log(
-          `${c}${arrow} ${symbol} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`
-        );
-
-        shown.add(symbol);
-      }
-    }
 
     // ===== SCHEDULING =====
     for (const m of markets) {
@@ -295,6 +321,8 @@ async function scheduleMarkets() {
       console.log(`${color.cyan}⏳ Scheduled:${color.reset} ${m.question}`);
       console.log(`   ⏱ ${(delay / 1000).toFixed(1)} sec`);
 
+      activeTimers.add(m.id);
+
       setTimeout(() => {
         activeTimers.delete(m.id);
         executeTrade(m);
@@ -314,7 +342,7 @@ function triggerRefresh() {
 
 // ===== AUTO REFRESH =====
 setInterval(() => {
-  log("⏰ Auto Refresh");
+  log("⏰ Auto Refresh 10 menit");
   scheduleMarkets();
 }, 10 * 60 * 1000);
 
