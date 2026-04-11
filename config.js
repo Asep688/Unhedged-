@@ -9,7 +9,7 @@ export const CONFIG = {
   // 🪙 Maksimal jumlah koin berbeda (BTC, ETH, SOL, dll)
   // Catatan: CC tidak dihitung dalam limit ini
 
-  MIN_DIFF: 0.0029, 
+  MIN_DIFF: 0.002, 
   // 📊 Minimal selisih harga (0.0035 = 0.35%)
   // Semakin besar → semakin selektif (lebih sedikit bet)
 
