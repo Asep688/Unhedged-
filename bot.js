@@ -13,14 +13,12 @@ import {
   uiSkip
 } from "./ui.js";
 
-// ===== API KEYS =====
 const API_KEYS = process.env.API_KEYS
   ? process.env.API_KEYS.split(",").map(k => k.trim()).filter(Boolean)
   : [];
 
 const activeTimers = new Map();
 
-// ===== STATS =====
 let stats = { totalBets: 0, wins: 0, losses: 0, profit: 0 };
 
 function loadStats() {
@@ -78,7 +76,7 @@ async function getCC() {
   }
 }
 
-// ===== HELPER =====
+// ===== DETECT =====
 function detectCoin(q) {
   q = q.toLowerCase();
 
@@ -142,25 +140,12 @@ async function executeTrade(m) {
     return;
   }
 
-  let decision;
+  let decision =
+    q.includes("<") || q.includes("BELOW")
+      ? (price < target ? "YES" : "NO")
+      : (price > target ? "YES" : "NO");
 
-  if (q.includes(">") || q.includes("ABOVE")) {
-    decision = price > target ? "YES" : "NO";
-  } else if (q.includes("<") || q.includes("BELOW")) {
-    decision = price < target ? "YES" : "NO";
-  } else {
-    decision = price > target ? "YES" : "NO";
-  }
-
-  uiTrade(
-    coin.name,
-    m.question,
-    price,
-    target,
-    change,
-    diff,
-    decision
-  );
+  uiTrade(coin.name, m.question, price, target, change, diff, decision);
 
   for (const apiKey of API_KEYS) {
     try {
@@ -206,7 +191,9 @@ async function scheduleMarkets() {
     const coin = detectCoin(q);
 
     if (!coin) continue;
-    if (!q.match(/\d{1,2}:\d{2}/)) continue;
+
+    // 🔥 FIX UTAMA BTC (18:00 & 18.00)
+    if (!q.match(/\d{1,2}[:.]\d{2}/)) continue;
 
     coinCount[coin.name] = coinCount[coin.name] || 0;
     if (coinCount[coin.name] >= CONFIG.MAX_PER_COIN) continue;
