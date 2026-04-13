@@ -124,11 +124,7 @@ async function placeBet(apiKey, marketId, outcomeIndex) {
 function getMarketType(q) {
   q = q.toUpperCase();
 
-  if (
-    q.includes("TANGGAL") ||
-    q.includes("PUKUL")
-  ) return "long";
-
+  if (q.includes("TANGGAL") || q.includes("PUKUL")) return "long";
   if (q.match(/\d{1,2}:\d{2}/)) return "short";
 
   return "short";
@@ -180,7 +176,6 @@ async function executeTrade(m) {
 
   const q = m.question.toUpperCase();
 
-  // ===== FILTER NON CRYPTO =====
   if (
     q.includes("FLIP") ||
     q.includes("MARKET CAP") ||
@@ -306,10 +301,17 @@ async function scheduleMarkets() {
 
   for (const m of markets) {
     const q = m.question.toUpperCase();
-    const coin = extractCoin(q);
-    const target = extractTarget(q);
 
-    if (!coin || target === null) continue;
+    // FILTER RINGAN (jangan terlalu ketat)
+    const valid =
+      q.includes("ABOVE") ||
+      q.includes("BELOW") ||
+      q.includes("EXCEED") ||
+      q.includes("MELAMPAUI") ||
+      q.includes("DI BAWAH");
+
+    if (!valid) continue;
+    if (!q.includes("$")) continue;
 
     const type = getMarketType(q);
 
@@ -375,7 +377,7 @@ async function scheduleMarkets() {
 // ===== START =====
 loadStats();
 
-console.log("🚀 Bot Started FINAL CLEAN MODE");
+console.log("🚀 Bot Started FINAL STABLE MODE");
 
 scheduleMarkets();
 
