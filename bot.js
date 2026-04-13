@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { CONFIG } from "./config.js";
 import {
   uiHeader,
+  uiDashboard,
   uiRefresh,
   uiSchedule,
   uiTrade,
@@ -42,6 +43,18 @@ async function getMarkets() {
   return res.data.markets;
 }
 
+async function getBalance(apiKey) {
+  try {
+    const res = await axios.get(
+      "https://api.unhedged.gg/api/v1/balance",
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    return parseFloat(res.data.balance.available);
+  } catch {
+    return null;
+  }
+}
+
 async function getBinance(symbol) {
   try {
     const res = await axios.get(
@@ -69,11 +82,20 @@ async function getCC() {
 function detectCoin(q) {
   q = q.toLowerCase();
 
-  if (q.includes("btc")) return { name: "BTC", symbol: "BTCUSDT" };
-  if (q.includes("eth")) return { name: "ETH", symbol: "ETHUSDT" };
-  if (q.includes("sol")) return { name: "SOL", symbol: "SOLUSDT" };
-  if (q.includes("bnb")) return { name: "BNB", symbol: "BNBUSDT" };
-  if (q.includes("cc") || q.includes("canton")) return { name: "CC" };
+  if (q.includes("btc") || q.includes("bitcoin"))
+    return { name: "BTC", symbol: "BTCUSDT" };
+
+  if (q.includes("eth") || q.includes("ethereum"))
+    return { name: "ETH", symbol: "ETHUSDT" };
+
+  if (q.includes("sol") || q.includes("solana"))
+    return { name: "SOL", symbol: "SOLUSDT" };
+
+  if (q.includes("bnb"))
+    return { name: "BNB", symbol: "BNBUSDT" };
+
+  if (q.includes("cc") || q.includes("canton"))
+    return { name: "CC" };
 
   return null;
 }
@@ -144,7 +166,11 @@ async function executeTrade(m) {
     try {
       await axios.post(
         "https://api.unhedged.gg/api/v1/bets",
-        { marketId: m.id, outcomeIndex: decision === "YES" ? 0 : 1, amount: CONFIG.BET_AMOUNT },
+        {
+          marketId: m.id,
+          outcomeIndex: decision === "YES" ? 0 : 1,
+          amount: CONFIG.BET_AMOUNT
+        },
         { headers: { Authorization: `Bearer ${apiKey}` } }
       );
 
@@ -162,6 +188,9 @@ async function executeTrade(m) {
 // ===== SCHEDULER =====
 async function scheduleMarkets() {
   uiRefresh();
+
+  const balance = await getBalance(API_KEYS[0]);
+  uiDashboard(balance, stats);
 
   const markets = await getMarkets();
   const now = Date.now();
