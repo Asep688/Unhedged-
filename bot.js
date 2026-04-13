@@ -125,7 +125,6 @@ function getMarketType(q) {
   q = q.toUpperCase();
 
   if (
-    q.includes("WILL") ||
     q.includes("TANGGAL") ||
     q.includes("PUKUL")
   ) return "long";
@@ -181,12 +180,17 @@ async function executeTrade(m) {
 
   const q = m.question.toUpperCase();
 
+  // ===== FILTER NON CRYPTO =====
   if (
     q.includes("FLIP") ||
     q.includes("MARKET CAP") ||
-    q.includes("CAPITALIZATION")
+    q.includes("CAPITALIZATION") ||
+    q.includes("VIEW") ||
+    q.includes("FOLLOWER") ||
+    q.includes("LIKE") ||
+    q.includes("POST")
   ) {
-    console.log("⚠️ Skip Market Non-Price");
+    console.log("⚠️ Skip Non-Crypto Market");
     return;
   }
 
@@ -302,6 +306,11 @@ async function scheduleMarkets() {
 
   for (const m of markets) {
     const q = m.question.toUpperCase();
+    const coin = extractCoin(q);
+    const target = extractTarget(q);
+
+    if (!coin || target === null) continue;
+
     const type = getMarketType(q);
 
     if (type === "short") shortMarkets.push(m);
@@ -334,7 +343,7 @@ async function scheduleMarkets() {
     scheduledCount++;
   }
 
-  // ===== LONG (OPTIONAL) =====
+  // ===== LONG CONDITIONAL =====
   if (CONFIG.MAX_BETS > 3) {
     for (const m of longMarkets) {
       if (scheduledCount >= CONFIG.MAX_BETS) break;
@@ -366,7 +375,7 @@ async function scheduleMarkets() {
 // ===== START =====
 loadStats();
 
-console.log("🚀 Bot Started FINAL PRIORITY MODE");
+console.log("🚀 Bot Started FINAL CLEAN MODE");
 
 scheduleMarkets();
 
