@@ -14,11 +14,12 @@ if (API_KEYS.length === 0) {
 }
 
 // ===== COLOR =====
-const color = {
+const c = {
   green: "\x1b[32m",
   red: "\x1b[31m",
   cyan: "\x1b[36m",
   yellow: "\x1b[33m",
+  magenta: "\x1b[35m",
   reset: "\x1b[0m"
 };
 
@@ -41,18 +42,19 @@ function saveStats() {
 }
 
 function printStats() {
-  console.log("\n📊 ===== STATS =====");
-
   const winrate =
     stats.totalBets > 0
       ? ((stats.wins / stats.totalBets) * 100).toFixed(2)
       : 0;
 
-  console.log(`Total Bets : ${stats.totalBets}`);
-  console.log(`Wins       : ${stats.wins}`);
-  console.log(`Losses     : ${stats.losses}`);
-  console.log(`Profit     : ${stats.profit} CC`);
-  console.log(`Winrate    : ${winrate}%`);
+  console.log(`
+${c.cyan}📊 ===== STATS =====${c.reset}
+Total Bets : ${stats.totalBets}
+Wins       : ${stats.wins}
+Losses     : ${stats.losses}
+Profit     : ${stats.profit} CC
+Winrate    : ${winrate}%
+`);
 }
 
 // ===== API =====
@@ -63,30 +65,7 @@ async function getMarkets() {
   return res.data.markets;
 }
 
-async function getBalance(apiKey) {
-  try {
-    const res = await axios.get(
-      "https://api.unhedged.gg/api/v1/balance",
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-    return parseFloat(res.data.balance.available);
-  } catch {
-    return null;
-  }
-}
-
 async function getPrice(symbol) {
-  try {
-    const res = await axios.get(
-      `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`
-    );
-    return parseFloat(res.data.price);
-  } catch {
-    return null;
-  }
-}
-
-async function getPriceWithChange(symbol) {
   try {
     const res = await axios.get(
       `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
@@ -95,18 +74,6 @@ async function getPriceWithChange(symbol) {
       price: parseFloat(res.data.lastPrice),
       change: parseFloat(res.data.priceChangePercent)
     };
-  } catch {
-    return null;
-  }
-}
-
-async function getCCPrice(id) {
-  try {
-    const res = await axios.get(
-      `https://api.unhedged.gg/api/v1/ctm/rounds/${id}/price-history`
-    );
-    const prices = res.data.prices;
-    return prices?.length ? prices[prices.length - 1].price : null;
   } catch {
     return null;
   }
@@ -121,49 +88,18 @@ async function placeBet(apiKey, marketId, outcomeIndex) {
 }
 
 // ===== HELPER =====
-function getMarketType(q) {
-  q = q.toUpperCase();
-
-  if (
-    q.includes("DATE") ||
-    q.includes("APRIL") ||
-    q.includes("2026") ||
-    q.includes("TANGGAL")
-  ) return "long";
-
-  if (
-    q.match(/\d{1,2}:\d{2}/) ||
-    q.match(/\d{1,2}\.\d{2}/) ||
-    q.match(/\d{1,2}\s?UTC/)
-  ) return "short";
-
-  return "short";
-}
-
 function extractCoin(q) {
   q = q.toLowerCase();
 
-  if (q.includes("btc") || q.includes("bitcoin"))
-    return { type: "binance", symbol: "BTCUSDT" };
-
-  if (q.includes("eth") || q.includes("ethereum"))
-    return { type: "binance", symbol: "ETHUSDT" };
-
-  if (q.includes("sol") || q.includes("solana"))
-    return { type: "binance", symbol: "SOLUSDT" };
-
-  if (q.includes("bnb"))
-    return { type: "binance", symbol: "BNBUSDT" };
-
-  if (q.includes("cc") || q.includes("canton"))
-    return { type: "cc", symbol: "CC" };
+  if (q.includes("btc") || q.includes("bitcoin")) return "BTCUSDT";
+  if (q.includes("eth") || q.includes("ethereum")) return "ETHUSDT";
+  if (q.includes("sol") || q.includes("solana")) return "SOLUSDT";
 
   return null;
 }
 
-// ===== PARSER ANGKA FINAL =====
 function extractTarget(q) {
-  const m = q.match(/\$?([\d.,]+)/);
+  const m = q.match(/([\d.,]+)/);
   if (!m) return null;
 
   let num = m[1];
@@ -174,227 +110,117 @@ function extractTarget(q) {
     num = num.replace(/,/g, "");
   }
 
-  num = num.replace(/[^\d.]/g, "");
-
   return parseFloat(num);
 }
 
 // ===== EXECUTE =====
 async function executeTrade(m) {
-  console.log("\n🔹 Checking Market");
-  console.log(m.question);
-
   const q = m.question.toUpperCase();
 
-  if (
-    q.includes("FLIP") ||
-    q.includes("MARKET CAP") ||
-    q.includes("CAPITALIZATION") ||
-    q.includes("VIEW") ||
-    q.includes("FOLLOWER") ||
-    q.includes("LIKE") ||
-    q.includes("POST")
-  ) {
-    console.log("⚠️ Skip Non-Crypto Market");
-    return;
-  }
-
-  const coin = extractCoin(q);
+  const symbol = extractCoin(q);
   const target = extractTarget(q);
-  const type = getMarketType(q);
 
-  if (!coin || target === null) {
-    console.log("⚠️ Skip: bukan market price");
+  if (!symbol || target === null) {
+    console.log(`${c.yellow}⚠️ Skip invalid market${c.reset}`);
     return;
   }
 
-  let current =
-    coin.type === "binance"
-      ? await getPrice(coin.symbol)
-      : await getCCPrice(m.id);
+  const data = await getPrice(symbol);
+  if (!data) return;
 
-  if (!current) return;
+  const { price, change } = data;
+  const diff = Math.abs(price - target) / target * 100;
 
-  const diff = Math.abs(current - target) / target;
+  const isUp =
+    q.includes("ABOVE") ||
+    q.includes("OVER") ||
+    q.includes(">");
 
-  const minDiff =
-    type === "long"
-      ? CONFIG.MIN_DIFF_LONG
-      : CONFIG.MIN_DIFF_SHORT;
-
-  const diffPercent = diff * 100;
-  const minPercent = minDiff * 100;
-
-  console.log(`${coin.symbol}`);
-  console.log(`Price : ${current}`);
-  console.log(`Target: ${target}`);
-  console.log(`Diff  : ${diffPercent.toFixed(3)}% | Min: ${minPercent.toFixed(3)}%`);
-
-  if (diff < minDiff) {
-    console.log(`${color.red}❌ Skip (diff kecil)${color.reset}`);
-    return;
-  }
+  const isDown =
+    q.includes("BELOW") ||
+    q.includes("UNDER") ||
+    q.includes("<");
 
   let outcomeIndex;
 
-  if (
-    q.includes("ABOVE") ||
-    q.includes("EXCEED") ||
-    q.includes("OVER") ||
-    q.includes(">") ||
-    q.includes("MELAMPAUI")
-  ) {
-    outcomeIndex = current > target ? 0 : 1;
-  }
-  else if (
-    q.includes("BELOW") ||
-    q.includes("UNDER") ||
-    q.includes("<") ||
-    q.includes("DI BAWAH") ||
-    q.includes("KURANG DARI")
-  ) {
-    outcomeIndex = current < target ? 0 : 1;
-  }
-  else {
-    outcomeIndex = current > target ? 0 : 1;
-  }
+  if (isUp) outcomeIndex = price > target ? 0 : 1;
+  else if (isDown) outcomeIndex = price < target ? 0 : 1;
+  else outcomeIndex = price > target ? 0 : 1;
 
-  console.log(`Decision: ${outcomeIndex === 0 ? "YES" : "NO"}`);
+  const arrow = change >= 0 ? "📈" : "📉";
+  const colorChange = change >= 0 ? c.green : c.red;
+
+  console.log(`
+${c.magenta}🔎 MARKET${c.reset}
+${m.question}
+
+${c.cyan}💰 ${symbol}${c.reset}
+Price   : ${price}
+Target  : ${target}
+Change  : ${colorChange}${change.toFixed(2)}% ${arrow}${c.reset}
+Diff    : ${diff.toFixed(3)}%
+
+${c.yellow}🎯 Decision:${c.reset} ${outcomeIndex === 0 ? "YES" : "NO"}
+`);
+
+  if (diff < CONFIG.MIN_DIFF_SHORT * 100) {
+    console.log(`${c.red}❌ Skip (diff kecil)${c.reset}`);
+    return;
+  }
 
   for (const apiKey of API_KEYS) {
     try {
-      const balance = await getBalance(apiKey);
-
-      if (!balance || balance < CONFIG.BET_AMOUNT) {
-        console.log(`${color.yellow}⚠️ Skip akun${color.reset}`);
-        continue;
-      }
-
       await placeBet(apiKey, m.id, outcomeIndex);
 
       stats.totalBets++;
       stats.profit += CONFIG.BET_AMOUNT;
       saveStats();
 
-      console.log(`${color.green}✅ BET SUCCESS${color.reset}`);
-
-      await new Promise(r => setTimeout(r, 300));
-
+      console.log(`${c.green}✅ BET SUCCESS${c.reset}`);
     } catch {
-      console.log(`${color.red}❌ Error akun${color.reset}`);
+      console.log(`${c.red}❌ BET FAILED${c.reset}`);
     }
   }
 }
 
-// ===== SCHEDULER =====
+// ===== SCHEDULER (SHORT ONLY) =====
 async function scheduleMarkets() {
-  console.log("\n🔄 Refresh Market");
+  console.log(`\n${c.cyan}🔄 REFRESH MARKET${c.reset}`);
 
   printStats();
-
-  console.log("\n📊 ===== MARKET PRICE =====");
-
-  const coins = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
-
-  for (const c of coins) {
-    const data = await getPriceWithChange(c);
-    if (!data) continue;
-
-    const cColor = data.change >= 0 ? color.green : color.red;
-
-    console.log(`${cColor}${c} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`);
-  }
 
   const markets = await getMarkets();
   const now = Date.now();
 
-  let scheduledCount = 0;
-  const shortMarkets = [];
-  const longMarkets = [];
-
   for (const m of markets) {
-    const q = m.question.toUpperCase();
-
-    const valid =
-      q.includes("ABOVE") ||
-      q.includes("BELOW") ||
-      q.includes("EXCEED") ||
-      q.includes("OVER") ||
-      q.includes("UNDER") ||
-      q.includes(">") ||
-      q.includes("<") ||
-      q.includes("MELAMPAUI") ||
-      q.includes("DI BAWAH");
-
-    if (!valid) continue;
-    if (!q.includes("$")) continue;
-
-    const type = getMarketType(q);
-
-    if (type === "short") shortMarkets.push(m);
-    else longMarkets.push(m);
-  }
-
-  // ===== SHORT PRIORITY =====
-  for (const m of shortMarkets) {
-    if (scheduledCount >= CONFIG.MAX_BETS) break;
     if (activeTimers.has(m.id)) continue;
 
+    const q = m.question.toUpperCase();
+
+    // hanya short (ada jam)
+    if (!q.match(/\d{1,2}:\d{2}/)) continue;
+
     const end = new Date(m.endTime).getTime();
-    const delay = end - now;
-
-    if (delay > CONFIG.MAX_DELAY * 1000) continue;
-
     const execTime = end - CONFIG.TRIGGER_SHORT * 1000;
-    const realDelay = execTime - now;
+    const delay = execTime - now;
 
-    if (realDelay <= 0) continue;
+    if (delay <= 0) continue;
 
-    console.log(`⏳ [SHORT] ${m.question}`);
+    console.log(`${c.cyan}⏳ Scheduled:${c.reset} ${m.question}`);
 
     const t = setTimeout(() => {
       activeTimers.delete(m.id);
       executeTrade(m);
-    }, realDelay);
+    }, delay);
 
     activeTimers.set(m.id, t);
-    scheduledCount++;
-  }
-
-  // ===== LONG CONDITIONAL =====
-  if (CONFIG.MAX_BETS > 3) {
-    for (const m of longMarkets) {
-      if (scheduledCount >= CONFIG.MAX_BETS) break;
-      if (activeTimers.has(m.id)) continue;
-
-      const end = new Date(m.endTime).getTime();
-      const delay = end - now;
-
-      if (delay > 4 * 60 * 60 * 1000) continue;
-
-      const execTime = end - CONFIG.TRIGGER_LONG * 1000;
-      const realDelay = execTime - now;
-
-      if (realDelay <= 0) continue;
-
-      console.log(`⏳ [LONG] ${m.question}`);
-
-      const t = setTimeout(() => {
-        activeTimers.delete(m.id);
-        executeTrade(m);
-      }, realDelay);
-
-      activeTimers.set(m.id, t);
-      scheduledCount++;
-    }
   }
 }
 
 // ===== START =====
 loadStats();
 
-console.log("🚀 Bot Started FINAL NO MISS MODE");
+console.log(`${c.green}🚀 BOT SHORT MODE STARTED${c.reset}`);
 
 scheduleMarkets();
-
 setInterval(scheduleMarkets, CONFIG.REFRESH_INTERVAL);
