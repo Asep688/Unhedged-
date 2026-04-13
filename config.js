@@ -1,8 +1,8 @@
 export const CONFIG = {
   BET_AMOUNT: 5,
 
-  MAX_BETS: 3,
-  MAX_PER_COIN: 1,
+  MAX_BETS: 4,
+  MAX_PER_COIN: 2,
 
   TRIGGER_SHORT: 30,
   REFRESH_INTERVAL: 600000,
