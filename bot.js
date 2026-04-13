@@ -8,12 +8,6 @@ const API_KEYS = process.env.API_KEYS
   ? process.env.API_KEYS.split(",").map(k => k.trim()).filter(Boolean)
   : [];
 
-if (API_KEYS.length === 0) {
-  console.log("❌ API_KEYS tidak ditemukan");
-  process.exit(1);
-}
-
-// ===== COLOR =====
 const c = {
   green: "\x1b[32m",
   red: "\x1b[31m",
@@ -23,7 +17,6 @@ const c = {
   reset: "\x1b[0m"
 };
 
-// ===== GLOBAL =====
 const activeTimers = new Map();
 
 // ===== STATS =====
@@ -41,22 +34,6 @@ function saveStats() {
   fs.writeFileSync("stats.json", JSON.stringify(stats, null, 2));
 }
 
-function printStats() {
-  const winrate =
-    stats.totalBets > 0
-      ? ((stats.wins / stats.totalBets) * 100).toFixed(2)
-      : 0;
-
-  console.log(`
-${c.cyan}📊 ===== STATS =====${c.reset}
-Total Bets : ${stats.totalBets}
-Wins       : ${stats.wins}
-Losses     : ${stats.losses}
-Profit     : ${stats.profit} CC
-Winrate    : ${winrate}%
-`);
-}
-
 // ===== API =====
 async function getMarkets() {
   const res = await axios.get(
@@ -65,7 +42,7 @@ async function getMarkets() {
   return res.data.markets;
 }
 
-async function getPrice(symbol) {
+async function getBinancePrice(symbol) {
   try {
     const res = await axios.get(
       `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
@@ -79,21 +56,38 @@ async function getPrice(symbol) {
   }
 }
 
-async function placeBet(apiKey, marketId, outcomeIndex) {
-  return axios.post(
-    "https://api.unhedged.gg/api/v1/bets",
-    { marketId, outcomeIndex, amount: CONFIG.BET_AMOUNT },
-    { headers: { Authorization: `Bearer ${apiKey}` } }
-  );
+async function getCCPrice() {
+  try {
+    const res = await axios.get(
+      "https://api.chainlink.com/v1/price/ccusd"
+    );
+    return {
+      price: res.data.price,
+      change: 0
+    };
+  } catch {
+    return null;
+  }
 }
 
-// ===== HELPER =====
-function extractCoin(q) {
+// ===== HELPERS =====
+function detectCoin(q) {
   q = q.toLowerCase();
 
-  if (q.includes("btc") || q.includes("bitcoin")) return "BTCUSDT";
-  if (q.includes("eth") || q.includes("ethereum")) return "ETHUSDT";
-  if (q.includes("sol") || q.includes("solana")) return "SOLUSDT";
+  if (q.includes("btc") || q.includes("bitcoin"))
+    return { name: "BTC", symbol: "BTCUSDT" };
+
+  if (q.includes("eth") || q.includes("ethereum"))
+    return { name: "ETH", symbol: "ETHUSDT" };
+
+  if (q.includes("sol") || q.includes("solana"))
+    return { name: "SOL", symbol: "SOLUSDT" };
+
+  if (q.includes("bnb"))
+    return { name: "BNB", symbol: "BNBUSDT" };
+
+  if (q.includes("cc") || q.includes("canton"))
+    return { name: "CC", symbol: "CC" };
 
   return null;
 }
@@ -117,60 +111,61 @@ function extractTarget(q) {
 async function executeTrade(m) {
   const q = m.question.toUpperCase();
 
-  const symbol = extractCoin(q);
+  const coin = detectCoin(q);
+  if (!coin) return;
+
   const target = extractTarget(q);
+  if (!target) return;
 
-  if (!symbol || target === null) {
-    console.log(`${c.yellow}⚠️ Skip invalid market${c.reset}`);
-    return;
-  }
+  let data =
+    coin.name === "CC"
+      ? await getCCPrice()
+      : await getBinancePrice(coin.symbol);
 
-  const data = await getPrice(symbol);
   if (!data) return;
 
   const { price, change } = data;
-  const diff = Math.abs(price - target) / target * 100;
 
-  const isUp =
-    q.includes("ABOVE") ||
-    q.includes("OVER") ||
-    q.includes(">");
+  const diff = Math.abs(price - target) / target;
+  const minDiff = CONFIG.DIFF[coin.name];
 
-  const isDown =
-    q.includes("BELOW") ||
-    q.includes("UNDER") ||
-    q.includes("<");
-
-  let outcomeIndex;
-
-  if (isUp) outcomeIndex = price > target ? 0 : 1;
-  else if (isDown) outcomeIndex = price < target ? 0 : 1;
-  else outcomeIndex = price > target ? 0 : 1;
-
-  const arrow = change >= 0 ? "📈" : "📉";
-  const colorChange = change >= 0 ? c.green : c.red;
-
-  console.log(`
-${c.magenta}🔎 MARKET${c.reset}
-${m.question}
-
-${c.cyan}💰 ${symbol}${c.reset}
-Price   : ${price}
-Target  : ${target}
-Change  : ${colorChange}${change.toFixed(2)}% ${arrow}${c.reset}
-Diff    : ${diff.toFixed(3)}%
-
-${c.yellow}🎯 Decision:${c.reset} ${outcomeIndex === 0 ? "YES" : "NO"}
-`);
-
-  if (diff < CONFIG.MIN_DIFF_SHORT * 100) {
-    console.log(`${c.red}❌ Skip (diff kecil)${c.reset}`);
+  if (diff < minDiff) {
+    console.log(`${c.red}❌ Skip ${coin.name} (diff kecil)${c.reset}`);
     return;
   }
 
+  let outcomeIndex;
+
+  if (q.includes(">") || q.includes("ABOVE") || q.includes("OVER")) {
+    outcomeIndex = price > target ? 0 : 1;
+  } else if (q.includes("<") || q.includes("BELOW") || q.includes("UNDER")) {
+    outcomeIndex = price < target ? 0 : 1;
+  } else {
+    outcomeIndex = price > target ? 0 : 1;
+  }
+
+  const arrow = change >= 0 ? "📈" : "📉";
+  const col = change >= 0 ? c.green : c.red;
+
+  console.log(`
+${c.magenta}🔎 ${coin.name} MARKET${c.reset}
+${m.question}
+
+Price   : ${price}
+Target  : ${target}
+Change  : ${col}${change.toFixed(2)}% ${arrow}${c.reset}
+Diff    : ${(diff * 100).toFixed(3)}%
+
+${c.yellow}Decision:${c.reset} ${outcomeIndex === 0 ? "YES" : "NO"}
+`);
+
   for (const apiKey of API_KEYS) {
     try {
-      await placeBet(apiKey, m.id, outcomeIndex);
+      await axios.post(
+        "https://api.unhedged.gg/api/v1/bets",
+        { marketId: m.id, outcomeIndex, amount: CONFIG.BET_AMOUNT },
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
 
       stats.totalBets++;
       stats.profit += CONFIG.BET_AMOUNT;
@@ -183,22 +178,29 @@ ${c.yellow}🎯 Decision:${c.reset} ${outcomeIndex === 0 ? "YES" : "NO"}
   }
 }
 
-// ===== SCHEDULER (SHORT ONLY) =====
+// ===== SCHEDULER =====
 async function scheduleMarkets() {
-  console.log(`\n${c.cyan}🔄 REFRESH MARKET${c.reset}`);
-
-  printStats();
+  console.log(`\n${c.cyan}🔄 REFRESH${c.reset}`);
 
   const markets = await getMarkets();
   const now = Date.now();
 
+  let totalScheduled = 0;
+  const coinCount = {};
+
   for (const m of markets) {
+    if (totalScheduled >= CONFIG.MAX_BETS) break;
     if (activeTimers.has(m.id)) continue;
 
     const q = m.question.toUpperCase();
 
-    // hanya short (ada jam)
+    const coin = detectCoin(q);
+    if (!coin) continue;
+
     if (!q.match(/\d{1,2}:\d{2}/)) continue;
+
+    coinCount[coin.name] = coinCount[coin.name] || 0;
+    if (coinCount[coin.name] >= CONFIG.MAX_PER_COIN) continue;
 
     const end = new Date(m.endTime).getTime();
     const execTime = end - CONFIG.TRIGGER_SHORT * 1000;
@@ -206,7 +208,7 @@ async function scheduleMarkets() {
 
     if (delay <= 0) continue;
 
-    console.log(`${c.cyan}⏳ Scheduled:${c.reset} ${m.question}`);
+    console.log(`${c.cyan}⏳ ${coin.name}${c.reset} → ${m.question}`);
 
     const t = setTimeout(() => {
       activeTimers.delete(m.id);
@@ -214,13 +216,16 @@ async function scheduleMarkets() {
     }, delay);
 
     activeTimers.set(m.id, t);
+
+    coinCount[coin.name]++;
+    totalScheduled++;
   }
 }
 
 // ===== START =====
 loadStats();
 
-console.log(`${c.green}🚀 BOT SHORT MODE STARTED${c.reset}`);
+console.log(`${c.green}🚀 CRYPTO MULTI BOT STARTED${c.reset}`);
 
 scheduleMarkets();
 setInterval(scheduleMarkets, CONFIG.REFRESH_INTERVAL);
