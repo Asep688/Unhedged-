@@ -156,9 +156,22 @@ function extractCoin(q) {
   return null;
 }
 
+// ===== PARSER ANGKA FINAL =====
 function extractTarget(q) {
-  const m = q.match(/\$?([\d,]+(\.\d+)?)/);
-  return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+  const m = q.match(/\$?([\d.,]+)/);
+  if (!m) return null;
+
+  let num = m[1];
+
+  if (num.includes(",") && !num.includes(".")) {
+    num = num.replace(",", ".");
+  } else {
+    num = num.replace(/,/g, "");
+  }
+
+  num = num.replace(/[^\d.]/g, "");
+
+  return parseFloat(num);
 }
 
 // ===== EXECUTE =====
@@ -167,11 +180,24 @@ async function executeTrade(m) {
   console.log(m.question);
 
   const q = m.question.toUpperCase();
+
+  if (
+    q.includes("FLIP") ||
+    q.includes("MARKET CAP") ||
+    q.includes("CAPITALIZATION")
+  ) {
+    console.log("⚠️ Skip Market Non-Price");
+    return;
+  }
+
   const coin = extractCoin(q);
   const target = extractTarget(q);
   const type = getMarketType(q);
 
-  if (!coin || !target) return;
+  if (!coin || target === null) {
+    console.log("⚠️ Skip: bukan market price");
+    return;
+  }
 
   let current =
     coin.type === "binance"
@@ -193,16 +219,35 @@ async function executeTrade(m) {
   console.log(`${coin.symbol}`);
   console.log(`Price : ${current}`);
   console.log(`Target: ${target}`);
-  console.log(
-    `Diff  : ${diffPercent.toFixed(3)}% | Min: ${minPercent.toFixed(3)}%`
-  );
+  console.log(`Diff  : ${diffPercent.toFixed(3)}% | Min: ${minPercent.toFixed(3)}%`);
 
   if (diff < minDiff) {
     console.log(`${color.red}❌ Skip (diff kecil)${color.reset}`);
     return;
   }
 
-  const outcomeIndex = current > target ? 0 : 1;
+  let outcomeIndex;
+
+  if (
+    q.includes("ABOVE") ||
+    q.includes("MELAMPAUI") ||
+    q.includes("LEBIH DARI") ||
+    q.includes("EXCEED")
+  ) {
+    outcomeIndex = current > target ? 0 : 1;
+  }
+  else if (
+    q.includes("BELOW") ||
+    q.includes("DI BAWAH") ||
+    q.includes("KURANG DARI")
+  ) {
+    outcomeIndex = current < target ? 0 : 1;
+  }
+  else {
+    outcomeIndex = current > target ? 0 : 1;
+  }
+
+  console.log(`Decision: ${outcomeIndex === 0 ? "YES" : "NO"}`);
 
   for (const apiKey of API_KEYS) {
     try {
@@ -245,51 +290,40 @@ async function scheduleMarkets() {
 
     const cColor = data.change >= 0 ? color.green : color.red;
 
-    console.log(
-      `${cColor}${c} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`
-    );
+    console.log(`${cColor}${c} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`);
   }
 
   const markets = await getMarkets();
   const now = Date.now();
 
+  let scheduledCount = 0;
+  const shortMarkets = [];
+  const longMarkets = [];
+
   for (const m of markets) {
-    if (activeTimers.has(m.id)) continue;
-
     const q = m.question.toUpperCase();
+    const type = getMarketType(q);
 
-    const valid =
-      q.includes("ABOVE") ||
-      q.includes("BELOW") ||
-      q.includes("EXCEED") ||
-      q.includes("MELAMPAUI") ||
-      q.includes("DI BAWAH") ||
-      q.includes("LEBIH") ||
-      q.includes("WILL") ||
-      q.includes("AKANKAH");
+    if (type === "short") shortMarkets.push(m);
+    else longMarkets.push(m);
+  }
 
-    if (!valid) continue;
+  // ===== SHORT PRIORITY =====
+  for (const m of shortMarkets) {
+    if (scheduledCount >= CONFIG.MAX_BETS) break;
+    if (activeTimers.has(m.id)) continue;
 
     const end = new Date(m.endTime).getTime();
     const delay = end - now;
 
-    const type = getMarketType(q);
+    if (delay > CONFIG.MAX_DELAY * 1000) continue;
 
-    if (type === "short" && delay > CONFIG.MAX_DELAY * 1000) continue;
-    if (type === "long" && delay > 4 * 60 * 60 * 1000) continue;
-
-    const trigger =
-      type === "long"
-        ? CONFIG.TRIGGER_LONG
-        : CONFIG.TRIGGER_SHORT;
-
-    const execTime = end - trigger * 1000;
+    const execTime = end - CONFIG.TRIGGER_SHORT * 1000;
     const realDelay = execTime - now;
 
     if (realDelay <= 0) continue;
 
-    console.log(`⏳ [${type.toUpperCase()}] ${m.question}`);
-    console.log(`   ⏱ ${(realDelay / 1000).toFixed(1)} sec`);
+    console.log(`⏳ [SHORT] ${m.question}`);
 
     const t = setTimeout(() => {
       activeTimers.delete(m.id);
@@ -297,13 +331,42 @@ async function scheduleMarkets() {
     }, realDelay);
 
     activeTimers.set(m.id, t);
+    scheduledCount++;
+  }
+
+  // ===== LONG (OPTIONAL) =====
+  if (CONFIG.MAX_BETS > 3) {
+    for (const m of longMarkets) {
+      if (scheduledCount >= CONFIG.MAX_BETS) break;
+      if (activeTimers.has(m.id)) continue;
+
+      const end = new Date(m.endTime).getTime();
+      const delay = end - now;
+
+      if (delay > 4 * 60 * 60 * 1000) continue;
+
+      const execTime = end - CONFIG.TRIGGER_LONG * 1000;
+      const realDelay = execTime - now;
+
+      if (realDelay <= 0) continue;
+
+      console.log(`⏳ [LONG] ${m.question}`);
+
+      const t = setTimeout(() => {
+        activeTimers.delete(m.id);
+        executeTrade(m);
+      }, realDelay);
+
+      activeTimers.set(m.id, t);
+      scheduledCount++;
+    }
   }
 }
 
 // ===== START =====
 loadStats();
 
-console.log("🚀 Bot Started FINAL");
+console.log("🚀 Bot Started FINAL PRIORITY MODE");
 
 scheduleMarkets();
 
