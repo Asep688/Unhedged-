@@ -1,6 +1,6 @@
 export const CONFIG = {
   BET_AMOUNT: 5,
-  MAX_BETS: 10,
+  MAX_BETS: 3,
   MAX_COINS: 10,
 
   // ===== DIFF =====
