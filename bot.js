@@ -124,8 +124,18 @@ async function placeBet(apiKey, marketId, outcomeIndex) {
 function getMarketType(q) {
   q = q.toUpperCase();
 
-  if (q.includes("TANGGAL") || q.includes("PUKUL")) return "long";
-  if (q.match(/\d{1,2}:\d{2}/)) return "short";
+  if (
+    q.includes("DATE") ||
+    q.includes("APRIL") ||
+    q.includes("2026") ||
+    q.includes("TANGGAL")
+  ) return "long";
+
+  if (
+    q.match(/\d{1,2}:\d{2}/) ||
+    q.match(/\d{1,2}\.\d{2}/) ||
+    q.match(/\d{1,2}\s?UTC/)
+  ) return "short";
 
   return "short";
 }
@@ -229,14 +239,17 @@ async function executeTrade(m) {
 
   if (
     q.includes("ABOVE") ||
-    q.includes("MELAMPAUI") ||
-    q.includes("LEBIH DARI") ||
-    q.includes("EXCEED")
+    q.includes("EXCEED") ||
+    q.includes("OVER") ||
+    q.includes(">") ||
+    q.includes("MELAMPAUI")
   ) {
     outcomeIndex = current > target ? 0 : 1;
   }
   else if (
     q.includes("BELOW") ||
+    q.includes("UNDER") ||
+    q.includes("<") ||
     q.includes("DI BAWAH") ||
     q.includes("KURANG DARI")
   ) {
@@ -302,11 +315,14 @@ async function scheduleMarkets() {
   for (const m of markets) {
     const q = m.question.toUpperCase();
 
-    // FILTER RINGAN (jangan terlalu ketat)
     const valid =
       q.includes("ABOVE") ||
       q.includes("BELOW") ||
       q.includes("EXCEED") ||
+      q.includes("OVER") ||
+      q.includes("UNDER") ||
+      q.includes(">") ||
+      q.includes("<") ||
       q.includes("MELAMPAUI") ||
       q.includes("DI BAWAH");
 
@@ -377,7 +393,7 @@ async function scheduleMarkets() {
 // ===== START =====
 loadStats();
 
-console.log("🚀 Bot Started FINAL STABLE MODE");
+console.log("🚀 Bot Started FINAL NO MISS MODE");
 
 scheduleMarkets();
 
