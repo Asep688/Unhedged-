@@ -40,6 +40,21 @@ function saveStats() {
   fs.writeFileSync("stats.json", JSON.stringify(stats, null, 2));
 }
 
+function printStats() {
+  console.log("\n📊 ===== STATS =====");
+
+  const winrate =
+    stats.totalBets > 0
+      ? ((stats.wins / stats.totalBets) * 100).toFixed(2)
+      : 0;
+
+  console.log(`Total Bets : ${stats.totalBets}`);
+  console.log(`Wins       : ${stats.wins}`);
+  console.log(`Losses     : ${stats.losses}`);
+  console.log(`Profit     : ${stats.profit} CC`);
+  console.log(`Winrate    : ${winrate}%`);
+}
+
 // ===== API =====
 async function getMarkets() {
   const res = await axios.get(
@@ -71,6 +86,20 @@ async function getPrice(symbol) {
   }
 }
 
+async function getPriceWithChange(symbol) {
+  try {
+    const res = await axios.get(
+      `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
+    );
+    return {
+      price: parseFloat(res.data.lastPrice),
+      change: parseFloat(res.data.priceChangePercent)
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function getCCPrice(id) {
   try {
     const res = await axios.get(
@@ -94,8 +123,15 @@ async function placeBet(apiKey, marketId, outcomeIndex) {
 // ===== HELPER =====
 function getMarketType(q) {
   q = q.toUpperCase();
-  if (q.includes("AT") && q.match(/\d{1,2}:\d{2}/)) return "short";
-  if (q.includes("TANGGAL") || q.includes("PUKUL")) return "long";
+
+  if (
+    q.includes("WILL") ||
+    q.includes("TANGGAL") ||
+    q.includes("PUKUL")
+  ) return "long";
+
+  if (q.match(/\d{1,2}:\d{2}/)) return "short";
+
   return "short";
 }
 
@@ -180,6 +216,7 @@ async function executeTrade(m) {
       await placeBet(apiKey, m.id, outcomeIndex);
 
       stats.totalBets++;
+      stats.profit += CONFIG.BET_AMOUNT;
       saveStats();
 
       console.log(`${color.green}✅ BET SUCCESS${color.reset}`);
@@ -196,6 +233,23 @@ async function executeTrade(m) {
 async function scheduleMarkets() {
   console.log("\n🔄 Refresh Market");
 
+  printStats();
+
+  console.log("\n📊 ===== MARKET PRICE =====");
+
+  const coins = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+
+  for (const c of coins) {
+    const data = await getPriceWithChange(c);
+    if (!data) continue;
+
+    const cColor = data.change >= 0 ? color.green : color.red;
+
+    console.log(
+      `${cColor}${c} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`
+    );
+  }
+
   const markets = await getMarkets();
   const now = Date.now();
 
@@ -204,11 +258,17 @@ async function scheduleMarkets() {
 
     const q = m.question.toUpperCase();
 
-    if (
-      !q.includes("ABOVE") &&
-      !q.includes("MELAMPAUI") &&
-      !q.includes("EXCEED")
-    ) continue;
+    const valid =
+      q.includes("ABOVE") ||
+      q.includes("BELOW") ||
+      q.includes("EXCEED") ||
+      q.includes("MELAMPAUI") ||
+      q.includes("DI BAWAH") ||
+      q.includes("LEBIH") ||
+      q.includes("WILL") ||
+      q.includes("AKANKAH");
+
+    if (!valid) continue;
 
     const end = new Date(m.endTime).getTime();
     const delay = end - now;
@@ -243,7 +303,7 @@ async function scheduleMarkets() {
 // ===== START =====
 loadStats();
 
-console.log("🚀 Bot Started (FINAL)");
+console.log("🚀 Bot Started FINAL");
 
 scheduleMarkets();
 
