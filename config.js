@@ -1,27 +1,19 @@
 export const CONFIG = {
-  BET_AMOUNT: 5, 
-  // 💰 Jumlah taruhan per bet (dalam CC)
+  BET_AMOUNT: 5,
+  MAX_BETS: 3,
+  MAX_COINS: 3,
 
-  MAX_BETS: 10, 
-  // 🔢 Maksimal jumlah bet dalam satu siklus refresh
+  // ===== DIFF =====
+  MIN_DIFF_SHORT: 0.002,  // 0.2% (CTM)
+  MIN_DIFF_LONG: 0.004,   // 0.4% (Event)
 
-  MAX_COINS: 4, 
-  // 🪙 Maksimal jumlah koin berbeda (BTC, ETH, SOL, dll)
-  // Catatan: CC tidak dihitung dalam limit ini
+  // ===== TRIGGER =====
+  TRIGGER_SHORT: 30, // detik sebelum close
+  TRIGGER_LONG: 60,  // lebih aman untuk event
 
-  MIN_DIFF: 0.0025, 
-  // 📊 Minimal selisih harga (0.0035 = 0.35%)
-  // Semakin besar → semakin selektif (lebih sedikit bet)
+  // ===== LIMIT =====
+  MAX_DELAY: 60 * 60, // 1 jam (short)
 
-  TRIGGER_TIME: 30, 
-  // ⏱ Waktu eksekusi sebelum market ditutup (dalam detik)
-  // Contoh: 30 = bet dilakukan 30 detik sebelum close
-
-  MAX_DELAY: 60 * 60, 
-  // ⏳ Maksimal jarak waktu market dari sekarang (dalam detik)
-  // 60*60 = 1 jam → hanya ambil market yang akan close ≤ 1 jam
-
-  REFRESH_INTERVAL: 20 * 60 * 1000 
-  // 🔄 Interval auto refresh market (dalam milidetik)
-  // 10*60*1000 = 10 menit
+  // ===== REFRESH =====
+  REFRESH_INTERVAL: 600000 // 10 menit
 };
