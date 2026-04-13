@@ -3,7 +3,15 @@ import fs from "fs";
 import 'dotenv/config';
 import { CONFIG } from "./config.js";
 
-const API_KEY = process.env.API_KEY;
+// ===== API KEYS =====
+const API_KEYS = process.env.API_KEYS
+  ? process.env.API_KEYS.split(",").map(k => k.trim()).filter(Boolean)
+  : [];
+
+if (API_KEYS.length === 0) {
+  console.log("❌ API_KEYS tidak ditemukan");
+  process.exit(1);
+}
 
 // ===== COLOR =====
 const color = {
@@ -15,40 +23,21 @@ const color = {
 };
 
 // ===== GLOBAL =====
-let activeTimers = new Set();
-let refreshTimeout;
+const activeTimers = new Map();
 
 // ===== STATS =====
-let stats = {
-  totalBets: 0,
-  wins: 0,
-  losses: 0,
-  profit: 0
-};
+let stats = { totalBets: 0, wins: 0, losses: 0, profit: 0 };
 
-// ===== LOAD / SAVE =====
 function loadStats() {
   try {
-    const data = fs.readFileSync("stats.json");
-    stats = JSON.parse(data);
+    stats = JSON.parse(fs.readFileSync("stats.json"));
   } catch {
-    console.log("📁 stats.json tidak ditemukan, membuat baru...");
     saveStats();
   }
 }
 
 function saveStats() {
   fs.writeFileSync("stats.json", JSON.stringify(stats, null, 2));
-}
-
-// ===== UI =====
-function log(title, data = "") {
-  console.log(`\n${color.cyan}🔹 ${title}${color.reset}`);
-  if (data) console.log(data);
-}
-
-function errorLog(err) {
-  console.log(`${color.red}❌ ERROR: ${err.message}${color.reset}`);
 }
 
 // ===== API =====
@@ -59,12 +48,16 @@ async function getMarkets() {
   return res.data.markets;
 }
 
-async function getBalance() {
-  const res = await axios.get(
-    "https://api.unhedged.gg/api/v1/balance",
-    { headers: { Authorization: `Bearer ${API_KEY}` } }
-  );
-  return parseFloat(res.data.balance.available);
+async function getBalance(apiKey) {
+  try {
+    const res = await axios.get(
+      "https://api.unhedged.gg/api/v1/balance",
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    return parseFloat(res.data.balance.available);
+  } catch {
+    return null;
+  }
 }
 
 async function getPrice(symbol) {
@@ -78,299 +71,180 @@ async function getPrice(symbol) {
   }
 }
 
-async function getPriceWithChange(symbol) {
+async function getCCPrice(id) {
   try {
     const res = await axios.get(
-      `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
+      `https://api.unhedged.gg/api/v1/ctm/rounds/${id}/price-history`
     );
-    return {
-      price: parseFloat(res.data.lastPrice),
-      change: parseFloat(res.data.priceChangePercent)
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ===== CC PRICE =====
-async function getCCPriceFromMarket(marketId) {
-  try {
-    const res = await axios.get(
-      `https://api.unhedged.gg/api/v1/ctm/rounds/${marketId}/price-history`
-    );
-
     const prices = res.data.prices;
-    if (!prices || prices.length === 0) return null;
-
-    return prices[prices.length - 1].price;
+    return prices?.length ? prices[prices.length - 1].price : null;
   } catch {
     return null;
   }
 }
 
-async function placeBet(marketId, outcomeIndex) {
+async function placeBet(apiKey, marketId, outcomeIndex) {
   return axios.post(
     "https://api.unhedged.gg/api/v1/bets",
-    {
-      marketId,
-      outcomeIndex,
-      amount: CONFIG.BET_AMOUNT
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-        "Content-Type": "application/json"
-      }
-    }
+    { marketId, outcomeIndex, amount: CONFIG.BET_AMOUNT },
+    { headers: { Authorization: `Bearer ${apiKey}` } }
   );
 }
 
-// ===== UPDATE STATS =====
-async function updateStats() {
-  try {
-    const res = await axios.get(
-      "https://api.unhedged.gg/api/v1/bets",
-      { headers: { Authorization: `Bearer ${API_KEY}` } }
-    );
-
-    let wins = 0;
-    let losses = 0;
-    let profit = 0;
-
-    for (const b of res.data.bets) {
-      const amount = parseFloat(b.amount);
-
-      if (b.status === "WON") {
-        wins++;
-        profit += amount;
-      }
-
-      if (b.status === "LOST") {
-        losses++;
-        profit -= amount;
-      }
-    }
-
-    stats.wins = wins;
-    stats.losses = losses;
-    stats.profit = profit;
-
-    saveStats();
-
-  } catch (err) {
-    errorLog(err);
-  }
+// ===== HELPER =====
+function getMarketType(q) {
+  q = q.toUpperCase();
+  if (q.includes("AT") && q.match(/\d{1,2}:\d{2}/)) return "short";
+  if (q.includes("TANGGAL") || q.includes("PUKUL")) return "long";
+  return "short";
 }
 
-// ===== COIN DETECTION =====
 function extractCoin(q) {
   q = q.toLowerCase();
 
   if (q.includes("btc") || q.includes("bitcoin"))
-    return { type: "binance", symbol: "BTCUSDT", priority: 0 };
+    return { type: "binance", symbol: "BTCUSDT" };
 
   if (q.includes("eth") || q.includes("ethereum"))
-    return { type: "binance", symbol: "ETHUSDT", priority: 1 };
+    return { type: "binance", symbol: "ETHUSDT" };
 
   if (q.includes("sol") || q.includes("solana"))
-    return { type: "binance", symbol: "SOLUSDT", priority: 2 };
+    return { type: "binance", symbol: "SOLUSDT" };
+
+  if (q.includes("bnb"))
+    return { type: "binance", symbol: "BNBUSDT" };
 
   if (q.includes("cc") || q.includes("canton"))
-    return { type: "cc", symbol: "CC", priority: 99 };
+    return { type: "cc", symbol: "CC" };
 
   return null;
 }
 
-// ===== HELPER =====
 function extractTarget(q) {
-  const m = q.match(/\$?([\d,]+\.\d+)/);
-  if (!m) return null;
-  return parseFloat(m[1].replace(/,/g, ""));
+  const m = q.match(/\$?([\d,]+(\.\d+)?)/);
+  return m ? parseFloat(m[1].replace(/,/g, "")) : null;
 }
 
-// ===== EXECUTION =====
-async function executeTrade(market) {
-  try {
-    log("Checking Market", market.question);
+// ===== EXECUTE =====
+async function executeTrade(m) {
+  console.log("\n🔹 Checking Market");
+  console.log(m.question);
 
-    const coin = extractCoin(market.question);
-    const target = extractTarget(market.question);
+  const q = m.question.toUpperCase();
+  const coin = extractCoin(q);
+  const target = extractTarget(q);
+  const type = getMarketType(q);
 
-    if (!coin || !target) return;
+  if (!coin || !target) return;
 
-    let current = null;
+  let current =
+    coin.type === "binance"
+      ? await getPrice(coin.symbol)
+      : await getCCPrice(m.id);
 
-    if (coin.type === "binance") {
-      current = await getPrice(coin.symbol);
+  if (!current) return;
+
+  const diff = Math.abs(current - target) / target;
+
+  const minDiff =
+    type === "long"
+      ? CONFIG.MIN_DIFF_LONG
+      : CONFIG.MIN_DIFF_SHORT;
+
+  const diffPercent = diff * 100;
+  const minPercent = minDiff * 100;
+
+  console.log(`${coin.symbol}`);
+  console.log(`Price : ${current}`);
+  console.log(`Target: ${target}`);
+  console.log(
+    `Diff  : ${diffPercent.toFixed(3)}% | Min: ${minPercent.toFixed(3)}%`
+  );
+
+  if (diff < minDiff) {
+    console.log(`${color.red}❌ Skip (diff kecil)${color.reset}`);
+    return;
+  }
+
+  const outcomeIndex = current > target ? 0 : 1;
+
+  for (const apiKey of API_KEYS) {
+    try {
+      const balance = await getBalance(apiKey);
+
+      if (!balance || balance < CONFIG.BET_AMOUNT) {
+        console.log(`${color.yellow}⚠️ Skip akun${color.reset}`);
+        continue;
+      }
+
+      await placeBet(apiKey, m.id, outcomeIndex);
+
+      stats.totalBets++;
+      saveStats();
+
+      console.log(`${color.green}✅ BET SUCCESS${color.reset}`);
+
+      await new Promise(r => setTimeout(r, 300));
+
+    } catch {
+      console.log(`${color.red}❌ Error akun${color.reset}`);
     }
-
-    if (coin.type === "cc") {
-      current = await getCCPriceFromMarket(market.id);
-    }
-
-    if (!current) return;
-
-    const diff = Math.abs(current - target) / target;
-
-    console.log(`${color.yellow}${coin.symbol}${color.reset}`);
-    console.log(`Price : ${current}`);
-    console.log(`Target: ${target}`);
-    console.log(`Diff  : ${(diff * 100).toFixed(3)}%`);
-
-    if (diff < CONFIG.MIN_DIFF) return;
-
-    const outcomeIndex = current > target ? 0 : 1;
-
-    await placeBet(market.id, outcomeIndex);
-
-    stats.totalBets++;
-    saveStats();
-
-    console.log(`${color.green}✅ BET SUCCESS${color.reset}`);
-
-  } catch (err) {
-    errorLog(err);
   }
 }
 
-// ===== MAIN =====
+// ===== SCHEDULER =====
 async function scheduleMarkets() {
-  try {
-    log("🔄 Refresh Market");
+  console.log("\n🔄 Refresh Market");
 
-    await updateStats();
+  const markets = await getMarkets();
+  const now = Date.now();
 
-    const markets = await getMarkets();
-    const balance = await getBalance();
+  for (const m of markets) {
+    if (activeTimers.has(m.id)) continue;
 
-    console.log(`${color.yellow}Balance: ${balance} CC${color.reset}`);
+    const q = m.question.toUpperCase();
 
-    // ===== SORT PRIORITY =====
-    markets.sort((a, b) => {
-      const ca = extractCoin(a.question);
-      const cb = extractCoin(b.question);
+    if (
+      !q.includes("ABOVE") &&
+      !q.includes("MELAMPAUI") &&
+      !q.includes("EXCEED")
+    ) continue;
 
-      return (ca?.priority ?? 99) - (cb?.priority ?? 99);
-    });
+    const end = new Date(m.endTime).getTime();
+    const delay = end - now;
 
-    // ===== STATS =====
-    const total = stats.wins + stats.losses;
+    const type = getMarketType(q);
 
-    const winrate = total > 0
-      ? ((stats.wins / total) * 100).toFixed(2)
-      : 0;
+    if (type === "short" && delay > CONFIG.MAX_DELAY * 1000) continue;
+    if (type === "long" && delay > 4 * 60 * 60 * 1000) continue;
 
-    const profitColor = stats.profit >= 0 ? color.green : color.red;
+    const trigger =
+      type === "long"
+        ? CONFIG.TRIGGER_LONG
+        : CONFIG.TRIGGER_SHORT;
 
-    console.log("\n📊 ===== STATS =====");
-    console.log(`Total Bets : ${stats.totalBets}`);
-    console.log(`Wins       : ${stats.wins}`);
-    console.log(`Losses     : ${stats.losses}`);
-    console.log(`${profitColor}Profit     : ${stats.profit} CC${color.reset}`);
-    console.log(`Winrate    : ${winrate}%`);
+    const execTime = end - trigger * 1000;
+    const realDelay = execTime - now;
 
-    // ===== PRICE DISPLAY =====
-    const shown = new Set();
+    if (realDelay <= 0) continue;
 
-    for (const m of markets) {
-      const coin = extractCoin(m.question);
+    console.log(`⏳ [${type.toUpperCase()}] ${m.question}`);
+    console.log(`   ⏱ ${(realDelay / 1000).toFixed(1)} sec`);
 
-      if (!coin || shown.has(coin.symbol)) continue;
+    const t = setTimeout(() => {
+      activeTimers.delete(m.id);
+      executeTrade(m);
+    }, realDelay);
 
-      if (coin.type === "binance") {
-        const data = await getPriceWithChange(coin.symbol);
-
-        if (data) {
-          const arrow = data.change >= 0 ? "📈" : "📉";
-          const c = data.change >= 0 ? color.green : color.red;
-
-          console.log(
-            `${c}${arrow} ${coin.symbol} → $${data.price} (${data.change.toFixed(2)}%)${color.reset}`
-          );
-        }
-      }
-
-      if (coin.type === "cc") {
-        const price = await getCCPriceFromMarket(m.id);
-
-        if (price) {
-          console.log(`🟡 CC → $${price}`);
-        } else {
-          console.log(`⚠️ CC → harga tidak tersedia`);
-        }
-      }
-
-      shown.add(coin.symbol);
-    }
-
-    const now = Date.now();
-
-    let betCount = 0;
-    const usedCoins = new Set();
-
-    // ===== SCHEDULING =====
-    for (const m of markets) {
-      if (activeTimers.has(m.id)) continue;
-
-      const coin = extractCoin(m.question);
-      if (!coin) continue;
-
-      const q = m.question.toUpperCase();
-
-      const valid =
-        q.includes("ABOVE") ||
-        q.includes("BELOW") ||
-        q.includes("HIT") ||
-        q.includes("REACH") ||
-        q.includes("TARGET");
-
-      if (!valid) continue;
-
-      // 🔥 FIX: CC tidak dihitung limit
-      if (coin.type !== "cc" && usedCoins.size >= CONFIG.MAX_COINS) continue;
-      if (coin.type !== "cc" && usedCoins.has(coin.symbol)) continue;
-
-      const end = new Date(m.endTime).getTime();
-      const triggerTime = end - CONFIG.TRIGGER_TIME * 1000;
-      const delay = triggerTime - now;
-
-      if (delay <= 0) continue;
-      if (delay > CONFIG.MAX_DELAY * 1000) continue;
-
-      if (coin.type !== "cc") {
-        usedCoins.add(coin.symbol);
-      }
-
-      betCount++;
-
-      console.log(`${color.cyan}⏳ Scheduled:${color.reset} ${m.question}`);
-      console.log(`   ⏱ ${(delay / 1000).toFixed(1)} sec`);
-
-      activeTimers.add(m.id);
-
-      setTimeout(() => {
-        activeTimers.delete(m.id);
-        executeTrade(m);
-      }, delay);
-    }
-
-  } catch (err) {
-    errorLog(err);
+    activeTimers.set(m.id, t);
   }
 }
-
-// ===== AUTO REFRESH =====
-setInterval(() => {
-  log("⏰ Auto Refresh");
-  scheduleMarkets();
-}, CONFIG.REFRESH_INTERVAL);
 
 // ===== START =====
-if (!API_KEY) {
-  console.log("❌ API_KEY tidak ditemukan");
-  process.exit(1);
-}
-
 loadStats();
-log("🚀 Bot Started");
+
+console.log("🚀 Bot Started (FINAL)");
+
 scheduleMarkets();
+
+setInterval(scheduleMarkets, CONFIG.REFRESH_INTERVAL);
