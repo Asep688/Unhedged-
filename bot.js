@@ -8,12 +8,14 @@ const API_KEYS = process.env.API_KEYS
   ? process.env.API_KEYS.split(",").map(k => k.trim()).filter(Boolean)
   : [];
 
+// ===== COLOR =====
 const c = {
   green: "\x1b[32m",
   red: "\x1b[31m",
   cyan: "\x1b[36m",
   yellow: "\x1b[33m",
   magenta: "\x1b[35m",
+  bold: "\x1b[1m",
   reset: "\x1b[0m"
 };
 
@@ -42,7 +44,8 @@ async function getMarkets() {
   return res.data.markets;
 }
 
-async function getBinancePrice(symbol) {
+// ===== PRICE =====
+async function getBinance(symbol) {
   try {
     const res = await axios.get(
       `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`
@@ -56,21 +59,17 @@ async function getBinancePrice(symbol) {
   }
 }
 
-async function getCCPrice() {
+// CC via Chainlink (fallback aman)
+async function getCC() {
   try {
-    const res = await axios.get(
-      "https://api.chainlink.com/v1/price/ccusd"
-    );
-    return {
-      price: res.data.price,
-      change: 0
-    };
+    const res = await axios.get("https://api.chainlink.com/v1/price/ccusd");
+    return { price: res.data.price, change: 0 };
   } catch {
-    return null;
+    return { price: null, change: 0 };
   }
 }
 
-// ===== HELPERS =====
+// ===== DETECT =====
 function detectCoin(q) {
   q = q.toLowerCase();
 
@@ -119,10 +118,10 @@ async function executeTrade(m) {
 
   let data =
     coin.name === "CC"
-      ? await getCCPrice()
-      : await getBinancePrice(coin.symbol);
+      ? await getCC()
+      : await getBinance(coin.symbol);
 
-  if (!data) return;
+  if (!data || !data.price) return;
 
   const { price, change } = data;
 
@@ -148,15 +147,20 @@ async function executeTrade(m) {
   const col = change >= 0 ? c.green : c.red;
 
   console.log(`
-${c.magenta}🔎 ${coin.name} MARKET${c.reset}
+${c.cyan}══════════════════════════════════${c.reset}
+${c.bold}${c.magenta}🚀 ${coin.name} TRADE${c.reset}
+${c.cyan}══════════════════════════════════${c.reset}
+
 ${m.question}
 
-Price   : ${price}
-Target  : ${target}
-Change  : ${col}${change.toFixed(2)}% ${arrow}${c.reset}
-Diff    : ${(diff * 100).toFixed(3)}%
+${c.yellow}💰 Price   :${c.reset} ${price}
+${c.yellow}🎯 Target  :${c.reset} ${target}
+${c.yellow}📊 Change  :${c.reset} ${col}${change.toFixed(2)}% ${arrow}${c.reset}
+${c.yellow}📏 Diff    :${c.reset} ${(diff * 100).toFixed(3)}%
 
-${c.yellow}Decision:${c.reset} ${outcomeIndex === 0 ? "YES" : "NO"}
+${c.green}➡️ Decision:${c.reset} ${outcomeIndex === 0 ? "YES" : "NO"}
+
+${c.cyan}══════════════════════════════════${c.reset}
 `);
 
   for (const apiKey of API_KEYS) {
@@ -180,24 +184,23 @@ ${c.yellow}Decision:${c.reset} ${outcomeIndex === 0 ? "YES" : "NO"}
 
 // ===== SCHEDULER =====
 async function scheduleMarkets() {
-  console.log(`\n${c.cyan}🔄 REFRESH${c.reset}`);
+  console.log(`\n${c.cyan}🔄 REFRESH MARKET${c.reset}`);
 
   const markets = await getMarkets();
   const now = Date.now();
 
-  let totalScheduled = 0;
+  let total = 0;
   const coinCount = {};
 
   for (const m of markets) {
-    if (totalScheduled >= CONFIG.MAX_BETS) break;
+    if (total >= CONFIG.MAX_BETS) break;
     if (activeTimers.has(m.id)) continue;
 
     const q = m.question.toUpperCase();
-
     const coin = detectCoin(q);
-    if (!coin) continue;
 
-    if (!q.match(/\d{1,2}:\d{2}/)) continue;
+    if (!coin) continue; // crypto only
+    if (!q.match(/\d{1,2}:\d{2}/)) continue; // short only
 
     coinCount[coin.name] = coinCount[coin.name] || 0;
     if (coinCount[coin.name] >= CONFIG.MAX_PER_COIN) continue;
@@ -208,7 +211,7 @@ async function scheduleMarkets() {
 
     if (delay <= 0) continue;
 
-    console.log(`${c.cyan}⏳ ${coin.name}${c.reset} → ${m.question}`);
+    console.log(`${c.green}⏳ ${coin.name}${c.reset} → ${m.question}`);
 
     const t = setTimeout(() => {
       activeTimers.delete(m.id);
@@ -218,14 +221,14 @@ async function scheduleMarkets() {
     activeTimers.set(m.id, t);
 
     coinCount[coin.name]++;
-    totalScheduled++;
+    total++;
   }
 }
 
 // ===== START =====
 loadStats();
 
-console.log(`${c.green}🚀 CRYPTO MULTI BOT STARTED${c.reset}`);
+console.log(`${c.green}🚀 CRYPTO ALL-PAIR BOT STARTED${c.reset}`);
 
 scheduleMarkets();
 setInterval(scheduleMarkets, CONFIG.REFRESH_INTERVAL);
