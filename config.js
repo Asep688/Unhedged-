@@ -1,10 +1,15 @@
 export const CONFIG = {
   BET_AMOUNT: 5,
 
-  MAX_BETS: 4,
-  MAX_PER_COIN: 2,
+  MAX_BETS: 5,
+  MAX_PER_COIN: 1,
 
-  TRIGGER_SHORT: 30,
+  TRIGGER_SHORT: 15,
+  TRIGGER_LONG: 15,
+
+  ENABLE_SHORT: true,
+  ENABLE_LONG: true,
+
   REFRESH_INTERVAL: 600000,
 
   DIFF: {
@@ -12,6 +17,6 @@ export const CONFIG = {
     ETH: 0.0025,
     SOL: 0.0025,
     BNB: 0.0025,
-    CC: 0.0033
+    CC: 0.0035
   }
 };
