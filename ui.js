@@ -9,7 +9,7 @@ export const c = {
 };
 
 export function uiHeader() {
-  console.log(`\n${c.green}🚀 CRYPTO ALL-PAIR BOT STARTED${c.reset}`);
+  console.log(`\n${c.green}🚀 CRYPTO BOT STARTED${c.reset}`);
 }
 
 export function uiDashboard(balance, stats) {
@@ -33,17 +33,13 @@ Winrate    : ${winrate}%
 `);
 }
 
-export function uiRefresh() {
-  console.log(`${c.cyan}🔄 REFRESH MARKET${c.reset}`);
-}
-
-export function uiSchedule(coin, question, target, seconds) {
+export function uiSchedule(name, question, target, seconds) {
   console.log(`
 ${c.cyan}══════════════════════════════${c.reset}
 ${c.bold}⏳ SCHEDULED${c.reset}
 ${c.cyan}══════════════════════════════${c.reset}
 
-${c.green}${coin}${c.reset}
+${c.green}${name}${c.reset}
 ${question}
 
 🎯 Target : ${target}
