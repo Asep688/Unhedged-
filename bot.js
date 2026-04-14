@@ -5,7 +5,6 @@ import { CONFIG } from "./config.js";
 import {
   uiHeader,
   uiDashboard,
-  uiRefresh,
   uiSchedule,
   uiTrade,
   uiBetSuccess,
@@ -76,7 +75,7 @@ async function getCC() {
   }
 }
 
-// ===== DETECT =====
+// ===== HELPERS =====
 function detectCoin(q) {
   q = q.toLowerCase();
 
@@ -99,18 +98,22 @@ function detectCoin(q) {
 }
 
 function extractTarget(q) {
-  const m = q.match(/([\d.,]+)/);
+  const m = q.match(/\$?([\d,]+(\.\d+)?)/);
   if (!m) return null;
+  return parseFloat(m[1].replace(/,/g, ""));
+}
 
-  let num = m[1];
+function getMarketType(q) {
+  q = q.toUpperCase();
 
-  if (num.includes(",") && !num.includes(".")) {
-    num = num.replace(",", ".");
-  } else {
-    num = num.replace(/,/g, "");
-  }
+  if (
+    q.includes("WILL") ||
+    q.includes("ON ") ||
+    q.includes("DATE") ||
+    q.includes("2026")
+  ) return "long";
 
-  return parseFloat(num);
+  return "short";
 }
 
 // ===== EXECUTE =====
@@ -122,6 +125,8 @@ async function executeTrade(m) {
 
   const target = extractTarget(q);
   if (!target) return;
+
+  const type = getMarketType(q);
 
   let data =
     coin.name === "CC"
@@ -140,12 +145,23 @@ async function executeTrade(m) {
     return;
   }
 
-  let decision =
-    q.includes("<") || q.includes("BELOW")
-      ? (price < target ? "YES" : "NO")
-      : (price > target ? "YES" : "NO");
+  let decision;
 
-  uiTrade(coin.name, m.question, price, target, change, diff, decision);
+  if (q.includes("<") || q.includes("BELOW")) {
+    decision = price < target ? "YES" : "NO";
+  } else {
+    decision = price > target ? "YES" : "NO";
+  }
+
+  uiTrade(
+    `${coin.name} (${type.toUpperCase()})`,
+    m.question,
+    price,
+    target,
+    change,
+    diff,
+    decision
+  );
 
   for (const apiKey of API_KEYS) {
     try {
@@ -172,8 +188,6 @@ async function executeTrade(m) {
 
 // ===== SCHEDULER =====
 async function scheduleMarkets() {
-  uiRefresh();
-
   const balance = await getBalance(API_KEYS[0]);
   uiDashboard(balance, stats);
 
@@ -188,27 +202,43 @@ async function scheduleMarkets() {
     if (activeTimers.has(m.id)) continue;
 
     const q = m.question.toUpperCase();
-    const coin = detectCoin(q);
 
+    const coin = detectCoin(q);
     if (!coin) continue;
 
-    // 🔥 FIX UTAMA BTC (18:00 & 18.00)
+    const target = extractTarget(q);
+    if (!target) continue;
+
     if (!q.match(/\d{1,2}[:.]\d{2}/)) continue;
 
-    coinCount[coin.name] = coinCount[coin.name] || 0;
-    if (coinCount[coin.name] >= CONFIG.MAX_PER_COIN) continue;
+    const type = getMarketType(q);
 
-    const target = extractTarget(q);
+    if (type === "short" && !CONFIG.ENABLE_SHORT) continue;
+    if (type === "long" && !CONFIG.ENABLE_LONG) continue;
 
     const end = new Date(m.endTime).getTime();
-    const execTime = end - CONFIG.TRIGGER_SHORT * 1000;
+
+    const trigger =
+      type === "long"
+        ? CONFIG.TRIGGER_LONG
+        : CONFIG.TRIGGER_SHORT;
+
+    const execTime = end - trigger * 1000;
     const delay = execTime - now;
 
     if (delay <= 0) continue;
 
     const sec = (delay / 1000).toFixed(1);
 
-    uiSchedule(coin.name, m.question, target, sec);
+    coinCount[coin.name] = coinCount[coin.name] || 0;
+    if (coinCount[coin.name] >= CONFIG.MAX_PER_COIN) continue;
+
+    uiSchedule(
+      `${coin.name} (${type.toUpperCase()})`,
+      m.question,
+      target,
+      sec
+    );
 
     const t = setTimeout(() => {
       activeTimers.delete(m.id);
