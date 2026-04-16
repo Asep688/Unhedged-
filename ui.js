@@ -33,7 +33,12 @@ Winrate    : ${winrate}%
 `);
 }
 
-export function uiSchedule(name, question, target, seconds) {
+// 🔥 UPDATED (ADA PRICE + DIFF)
+export function uiSchedule(name, question, target, seconds, price, change, diff) {
+  const arrow = change >= 0 ? "📈" : "📉";
+  const col = change >= 0 ? c.green : c.red;
+  const diffPercent = (diff * 100).toFixed(3);
+
   console.log(`
 ${c.cyan}══════════════════════════════${c.reset}
 ${c.bold}⏳ SCHEDULED${c.reset}
@@ -42,7 +47,11 @@ ${c.cyan}═══════════════════════�
 ${c.green}${name}${c.reset}
 ${question}
 
-🎯 Target : ${target}
+💰 Price   : ${price}
+🎯 Target  : ${target}
+📊 Change  : ${col}${change.toFixed(2)}% ${arrow}${c.reset}
+📏 Diff    : ${diffPercent}%
+
 ⏱ Execute: ${seconds} sec
 `);
 }
