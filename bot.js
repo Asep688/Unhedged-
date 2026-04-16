@@ -140,18 +140,22 @@ async function executeTrade(m) {
   const diff = Math.abs(price - target) / target;
   const minDiff = CONFIG.DIFF[coin.name];
 
+  const diffPercent = diff * 100;
+
+  if (diffPercent < 0.1) {
+    uiSkip("Noise (terlalu dekat)");
+    return;
+  }
+
   if (diff < minDiff) {
     uiSkip("Diff terlalu kecil");
     return;
   }
 
-  let decision;
-
-  if (q.includes("<") || q.includes("BELOW")) {
-    decision = price < target ? "YES" : "NO";
-  } else {
-    decision = price > target ? "YES" : "NO";
-  }
+  let decision =
+    q.includes("<") || q.includes("BELOW")
+      ? (price < target ? "YES" : "NO")
+      : (price > target ? "YES" : "NO");
 
   uiTrade(
     `${coin.name} (${type.toUpperCase()})`,
@@ -165,6 +169,12 @@ async function executeTrade(m) {
 
   for (const apiKey of API_KEYS) {
     try {
+      const balance = await getBalance(apiKey);
+      if (!balance || balance < CONFIG.BET_AMOUNT) {
+        uiSkip("Saldo tidak cukup");
+        continue;
+      }
+
       await axios.post(
         "https://api.unhedged.gg/api/v1/bets",
         {
@@ -228,6 +238,16 @@ async function scheduleMarkets() {
 
     if (delay <= 0) continue;
 
+    let data =
+      coin.name === "CC"
+        ? await getCC()
+        : await getBinance(coin.symbol);
+
+    if (!data) continue;
+
+    const { price, change } = data;
+    const diff = Math.abs(price - target) / target;
+
     const sec = (delay / 1000).toFixed(1);
 
     coinCount[coin.name] = coinCount[coin.name] || 0;
@@ -237,7 +257,10 @@ async function scheduleMarkets() {
       `${coin.name} (${type.toUpperCase()})`,
       m.question,
       target,
-      sec
+      sec,
+      price,
+      change,
+      diff
     );
 
     const t = setTimeout(() => {
