@@ -2,7 +2,7 @@ export const CONFIG = {
   BET_AMOUNT: 20,
 
   MAX_BETS: 20,
-  MAX_PER_COIN: 20,
+  MAX_PER_COIN: 100,
 
   TRIGGER_SHORT: 15,
   TRIGGER_LONG: 15,
