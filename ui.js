@@ -9,15 +9,13 @@ export const c = {
   reset: "\x1b[0m"
 };
 
-// ===== HEADER =====
 export function uiHeader() {
   console.log(`
 ${c.green}${c.bold}🚀 CRYPTO SNIPER BOT STARTED${c.reset}
-${c.dim}Multi Account • Real-time • Diff Filter${c.reset}
+${c.dim}Multi Account • Sniping • Diff Filter${c.reset}
 `);
 }
 
-// ===== DASHBOARD =====
 export function uiDashboard(balance, stats) {
   const winrate =
     stats.totalBets > 0
@@ -39,11 +37,9 @@ ${c.cyan}═══════════════════════�
 `);
 }
 
-// ===== SCHEDULE =====
 export function uiSchedule(name, question, target, seconds, price, change, diff) {
   const arrow = change >= 0 ? "📈" : "📉";
   const col = change >= 0 ? c.green : c.red;
-
   const diffPercent = (diff * 100).toFixed(3);
 
   const diffColor =
@@ -68,11 +64,9 @@ ${c.dim}${question}${c.reset}
 `);
 }
 
-// ===== TRADE =====
 export function uiTrade(coin, question, price, target, change, diff, decision) {
   const arrow = change >= 0 ? "📈" : "📉";
   const col = change >= 0 ? c.green : c.red;
-
   const decisionColor = decision === "YES" ? c.green : c.red;
 
   console.log(`
@@ -91,7 +85,6 @@ ${question}
 `);
 }
 
-// ===== BET RESULT =====
 export function uiBetSuccess(id) {
   console.log(`${c.green}✅ BET SUCCESS (${id})${c.reset}`);
 }
@@ -100,7 +93,6 @@ export function uiBetFail(id) {
   console.log(`${c.red}❌ BET FAILED (${id})${c.reset}`);
 }
 
-// ===== SKIP =====
 export function uiSkip(msg) {
   console.log(`${c.yellow}⚠️ ${msg}${c.reset}`);
-}
+                     }
