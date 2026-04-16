@@ -1,8 +1,8 @@
 export const CONFIG = {
-  BET_AMOUNT: 8,
+  BET_AMOUNT: 20,
 
-  MAX_BETS: 5,
-  MAX_PER_COIN: 5,
+  MAX_BETS: 20,
+  MAX_PER_COIN: 20,
 
   TRIGGER_SHORT: 15,
   TRIGGER_LONG: 15,
