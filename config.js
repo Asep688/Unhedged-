@@ -16,7 +16,7 @@ export const CONFIG = {
     BTC: 0.0045,
     ETH: 0.0045,
     SOL: 0.0045,
-    BNB: 0.0045,
+    BNB: 0.006,
     CC: 0.008
   }
 };
