@@ -8,15 +8,15 @@ export const CONFIG = {
   TRIGGER_LONG: 10,
 
   ENABLE_SHORT: true,
-  ENABLE_LONG: true,
+  ENABLE_LONG: false,
 
   REFRESH_INTERVAL: 600000,
 
   DIFF: {
-    BTC: 0.0045,
-    ETH: 0.0045,
+    BTC: 0.004,
+    ETH: 0.004,
     SOL: 0.0045,
-    BNB: 0.006,
+    BNB: 0.004,
     CC: 0.008
   }
 };
