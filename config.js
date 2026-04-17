@@ -13,10 +13,10 @@ export const CONFIG = {
   REFRESH_INTERVAL: 600000,
 
   DIFF: {
-    BTC: 0.006,
-    ETH: 0.006,
-    SOL: 0.006,
-    BNB: 0.006,
-    CC: 0.003
+    BTC: 0.004,
+    ETH: 0.004,
+    SOL: 0.004,
+    BNB: 0.004,
+    CC: 0.008
   }
 };
