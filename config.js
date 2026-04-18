@@ -8,7 +8,7 @@ export const CONFIG = {
   TRIGGER_LONG: 10,
 
   ENABLE_SHORT: true,
-  ENABLE_LONG: false,
+  ENABLE_LONG: true,
 
   REFRESH_INTERVAL: 600000,
 
