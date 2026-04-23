@@ -1,22 +1,44 @@
 export const CONFIG = {
   BET_AMOUNT: 20,
 
-  MAX_BETS: 100,
-  MAX_PER_COIN: 100,
+  MAX_BETS: 3,
+  MAX_PER_COIN: 1,
 
-  TRIGGER_SHORT: 10,
-  TRIGGER_LONG: 10,
+  ENABLE: {
+    SHORT: true,
+    HOURLY: true,
+    DAILY: false
+  },
 
-  ENABLE_SHORT: true,
-  ENABLE_LONG: true,
-
-  REFRESH_INTERVAL: 600000,
+  TRIGGER: {
+    SHORT: 5,
+    HOURLY: 6,
+    DAILY: 10
+  },
 
   DIFF: {
-    BTC: 0.003,
-    ETH: 0.003,
-    SOL: 0.003,
-    BNB: 0.003,
-    CC: 0.008
-  }
+    SHORT: {
+      BTC: 0.004,
+      ETH: 0.004,
+      SOL: 0.004,
+      BNB: 0.004,
+      CC: 0.006
+    },
+    HOURLY: {
+      BTC: 0.004,
+      ETH: 0.004,
+      SOL: 0.004,
+      BNB: 0.004,
+      CC: 0.006
+    },
+    DAILY: {
+      BTC: 0.005,
+      ETH: 0.006,
+      SOL: 0.007,
+      BNB: 0.007,
+      CC: 0.008
+    }
+  },
+
+  REFRESH_INTERVAL: 600000
 };
