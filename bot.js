@@ -24,19 +24,13 @@ function loadStats() {
   try {
     stats = JSON.parse(fs.readFileSync("stats.json"));
   } catch {
-    saveStats();
+    fs.writeFileSync("stats.json", JSON.stringify(stats));
   }
-}
-
-function saveStats() {
-  fs.writeFileSync("stats.json", JSON.stringify(stats, null, 2));
 }
 
 // ===== API =====
 async function getMarkets() {
-  const res = await axios.get(
-    "https://api.unhedged.gg/api/v1/markets?status=ACTIVE&limit=100"
-  );
+  const res = await axios.get("https://api.unhedged.gg/api/v1/markets?status=ACTIVE&limit=100");
   return res.data.markets;
 }
 
@@ -79,99 +73,77 @@ async function getCC() {
 function detectCoin(q) {
   q = q.toLowerCase();
 
-  if (q.includes("btc") || q.includes("bitcoin"))
-    return { name: "BTC", symbol: "BTCUSDT" };
-
-  if (q.includes("eth") || q.includes("ethereum"))
-    return { name: "ETH", symbol: "ETHUSDT" };
-
-  if (q.includes("sol") || q.includes("solana"))
-    return { name: "SOL", symbol: "SOLUSDT" };
-
-  if (q.includes("bnb"))
-    return { name: "BNB", symbol: "BNBUSDT" };
-
-  if (q.includes("cc") || q.includes("canton"))
-    return { name: "CC" };
+  if (q.includes("btc")) return { name: "BTC", symbol: "BTCUSDT" };
+  if (q.includes("eth")) return { name: "ETH", symbol: "ETHUSDT" };
+  if (q.includes("sol")) return { name: "SOL", symbol: "SOLUSDT" };
+  if (q.includes("bnb")) return { name: "BNB", symbol: "BNBUSDT" };
+  if (q.includes("cc") || q.includes("canton")) return { name: "CC" };
 
   return null;
 }
 
 function extractTarget(q) {
   const m = q.match(/\$?([\d,]+(\.\d+)?)/);
-  if (!m) return null;
-  return parseFloat(m[1].replace(/,/g, ""));
+  return m ? parseFloat(m[1].replace(/,/g, "")) : null;
 }
 
 function getMarketType(q) {
   q = q.toUpperCase();
 
-  if (
-    q.includes("WILL") ||
-    q.includes("ON ") ||
-    q.includes("DATE") ||
-    q.includes("2026")
-  ) return "long";
+  if (q.includes("CURRENT HOUR")) return "HOURLY";
 
-  return "short";
+  if (
+    q.includes("DAILY") ||
+    q.includes("DAY CLOSE")
+  ) return "DAILY";
+
+  if (/\d{1,2}[:.]\d{2}/.test(q)) return "SHORT";
+
+  return null;
+}
+
+function getNextHourClose() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setMinutes(0, 0, 0);
+  next.setHours(next.getHours() + 1);
+  return next.getTime();
 }
 
 // ===== EXECUTE =====
-async function executeTrade(m) {
+async function executeTrade(m, type) {
   const q = m.question.toUpperCase();
 
   const coin = detectCoin(q);
-  if (!coin) return;
-
   const target = extractTarget(q);
-  if (!target) return;
+  if (!coin || !target) return;
 
-  const type = getMarketType(q);
-
-  let data =
-    coin.name === "CC"
-      ? await getCC()
-      : await getBinance(coin.symbol);
+  const data = coin.name === "CC"
+    ? await getCC()
+    : await getBinance(coin.symbol);
 
   if (!data) return;
 
   const { price, change } = data;
 
   const diff = Math.abs(price - target) / target;
-  const minDiff = CONFIG.DIFF[coin.name];
+  const minDiff = CONFIG.DIFF[type][coin.name];
 
-  const diffPercent = diff * 100;
+  if (diff < minDiff) return;
 
-  if (diffPercent < 0.1) {
-    uiSkip("Noise (terlalu dekat)");
-    return;
-  }
-
-  if (diff < minDiff) {
-    uiSkip("Diff terlalu kecil");
-    return;
-  }
-
-  let decision =
-    q.includes("<") || q.includes("BELOW")
+  const decision =
+    q.includes("BELOW") || q.includes("<")
       ? (price < target ? "YES" : "NO")
       : (price > target ? "YES" : "NO");
 
-  uiTrade(
-    `${coin.name} (${type.toUpperCase()})`,
-    m.question,
-    price,
-    target,
-    change,
-    diff,
-    decision
-  );
+  uiTrade(`${coin.name} (${type})`, m.question, price, target, change, diff, decision);
 
   for (const apiKey of API_KEYS) {
     try {
       const balance = await getBalance(apiKey);
+
       if (!balance || balance < CONFIG.BET_AMOUNT) {
-        uiSkip("Saldo tidak cukup");
+        uiSkip(`Saldo (${apiKey.slice(0,5)})`);
         continue;
       }
 
@@ -185,13 +157,12 @@ async function executeTrade(m) {
         { headers: { Authorization: `Bearer ${apiKey}` } }
       );
 
-      stats.totalBets++;
-      stats.profit += CONFIG.BET_AMOUNT;
-      saveStats();
+      uiBetSuccess(apiKey.slice(0,5));
 
-      uiBetSuccess();
+      await new Promise(r => setTimeout(r, 300));
+
     } catch {
-      uiBetFail();
+      uiBetFail(apiKey.slice(0,5));
     }
   }
 }
@@ -213,51 +184,50 @@ async function scheduleMarkets() {
 
     const q = m.question.toUpperCase();
 
-    const coin = detectCoin(q);
-    if (!coin) continue;
-
-    const target = extractTarget(q);
-    if (!target) continue;
-
-    if (!q.match(/\d{1,2}[:.]\d{2}/)) continue;
-
     const type = getMarketType(q);
+    if (!type) continue;
 
-    if (type === "short" && !CONFIG.ENABLE_SHORT) continue;
-    if (type === "long" && !CONFIG.ENABLE_LONG) continue;
+    if (!CONFIG.ENABLE[type]) continue;
 
-    const end = new Date(m.endTime).getTime();
+    const coin = detectCoin(q);
+    const target = extractTarget(q);
+    if (!coin || !target) continue;
 
-    const trigger =
-      type === "long"
-        ? CONFIG.TRIGGER_LONG
-        : CONFIG.TRIGGER_SHORT;
+    coinCount[coin.name] = coinCount[coin.name] || 0;
+    if (coinCount[coin.name] >= CONFIG.MAX_PER_COIN) continue;
 
-    const execTime = end - trigger * 1000;
-    const delay = execTime - now;
+    let end;
+
+    if (type === "HOURLY") {
+      end = getNextHourClose();
+    } else if (type === "DAILY") {
+      const d = new Date();
+      d.setUTCHours(0,0,0,0);
+      d.setUTCDate(d.getUTCDate() + 1);
+      end = d.getTime();
+    } else {
+      end = new Date(m.endTime).getTime();
+    }
+
+    const trigger = CONFIG.TRIGGER[type];
+    const delay = end - trigger * 1000 - now;
 
     if (delay <= 0) continue;
 
-    let data =
-      coin.name === "CC"
-        ? await getCC()
-        : await getBinance(coin.symbol);
+    const data = coin.name === "CC"
+      ? await getCC()
+      : await getBinance(coin.symbol);
 
     if (!data) continue;
 
     const { price, change } = data;
     const diff = Math.abs(price - target) / target;
 
-    const sec = (delay / 1000).toFixed(1);
-
-    coinCount[coin.name] = coinCount[coin.name] || 0;
-    if (coinCount[coin.name] >= CONFIG.MAX_PER_COIN) continue;
-
     uiSchedule(
-      `${coin.name} (${type.toUpperCase()})`,
+      `${coin.name} (${type})`,
       m.question,
       target,
-      sec,
+      (delay / 1000).toFixed(1),
       price,
       change,
       diff
@@ -265,7 +235,7 @@ async function scheduleMarkets() {
 
     const t = setTimeout(() => {
       activeTimers.delete(m.id);
-      executeTrade(m);
+      executeTrade(m, type);
     }, delay);
 
     activeTimers.set(m.id, t);
